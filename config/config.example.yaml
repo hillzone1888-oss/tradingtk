@@ -1,0 +1,73 @@
+# Copy to config/config.yaml (gitignored) and edit for your run.
+# Every capital/risk limit is a DOLLAR amount or a PROBABILITY-POINT count.
+
+# ─── Execution mode ────────────────────────────────────────────────
+# shadow : score the whole universe, write nothing to a venue. Default.
+# paper  : simulated fills against real recorded books. No venue orders.
+# live   : the ONLY mode `execute` runs in — and only with the gates below.
+mode: shadow
+live_trading_confirmed: false      # 2nd independent flag; live needs BOTH
+
+capital:
+  total_capital: 20.00             # $ — hard ceiling, enforced independently
+  position_target: 2.00            # $ — sizing target, converted to contracts
+  per_position_ceiling: 3.00       # $ — hard reject if 1+ contracts exceed this
+  max_positions: 6                 # slots (5–8)
+  max_slots_per_underlying: 2      # prevents an all-BTC book
+
+edge_gate:
+  min_net_edge_pp: 3.0             # probability POINTS after fees+spread+margin
+  margin_pp: 1.0                   # extra cushion required on top of costs
+
+liquidity:
+  min_book_depth_multiple: 5.0     # visible depth >= 5x my order to enter
+  max_book_participation_pct: 10.0 # cap order at 10% of visible depth
+
+horizon:
+  max_hours_to_resolution: 168     # tight by default (7d); shorter is better
+  prefer_short_dated: true
+
+risk:
+  max_daily_loss_dollars: 4.00     # halt NEW entries for the day
+  max_total_drawdown_dollars: 8.00 # halt permanently until manual reset
+  data_staleness_halt_seconds: 90  # halt if signal data older than this
+
+orders:
+  prefer_maker: true               # rest inside the spread by default
+  allow_crossing: false            # crossing the spread requires this = true
+  limit_order_timeout_seconds: 120 # then cancel
+  confirmation_phrase: "EXECUTE"   # typed at execute time
+
+venue:
+  name: kalshi                     # kalshi | polymarket_us (later)
+  environment: demo                # demo | prod
+  use_production: false            # prod requires this = true (belt & braces)
+
+provider:
+  primary: hyperliquid             # native HL is default + fallback
+  moondev_enabled: false           # opt-in; paid tier > $20 book
+  moondev_tier: standard           # standard | qe  (retention/row caps differ)
+  capabilities:
+    hyperliquid: [spot_price, perp_price, candles, orderbook, funding, realized_vol]
+    moondev:     [liquidations, hlp_sentiment, poly_whales, smart_money, order_flow]
+
+fees:
+  # Fallback multipliers ONLY — verified against the live schedule at startup.
+  verify_against_schedule: true
+  kalshi:
+    taker_multiplier: 0.07
+    maker_multiplier: 0.0025       # placeholder; confirmed at startup
+    roundup_to_cent: true
+
+strategy:
+  name: baseline_vol               # baseline_vol | liquidation_skew
+  realized_vol_lookback_days: 30
+
+recorder:
+  snapshot_interval_seconds: 60    # orderbook + derived-signal polling cadence
+  tape_dir: data/tape
+
+paths:
+  proposals_dir: proposals
+  state_db: state/toolkit.sqlite
+  cache_dir: data/cache

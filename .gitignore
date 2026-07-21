@@ -1,0 +1,37 @@
+# ─── Secrets — never commit ────────────────────────────────────────
+.env
+*.pem
+*.key
+secrets/
+
+# ─── Reference material (cloned, not vendored) ─────────────────────
+reference/
+
+# ─── Generated / runtime state ─────────────────────────────────────
+proposals/
+data/
+state/
+*.sqlite
+*.sqlite-journal
+*.parquet
+
+# ─── Python ────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+
+# ─── Local config (keep the example, ignore the real one) ──────────
+config/config.yaml
+!config/config.example.yaml
+
+# ─── OS / editor ───────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/

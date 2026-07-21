@@ -1,0 +1,40 @@
+[project]
+name = "tradetk"
+version = "0.0.1"
+description = "Composable CLI trading toolkit: Hyperliquid signals -> binary event contracts (Kalshi / Polymarket US)."
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "websockets>=12",
+    "pydantic>=2.7",
+    "pandas>=2.2",
+    "pyarrow>=16",
+    "numpy>=1.26",
+    "python-dotenv>=1.0",
+    "rich>=13.7",
+    "pyyaml>=6.0",
+    # Uses the OS trust store so httpx works behind the machine's corporate/MITM
+    # root CA (uv already needs --native-tls for the same reason).
+    "truststore>=0.9",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "ruff>=0.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tradetk"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
