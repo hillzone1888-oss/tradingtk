@@ -364,6 +364,21 @@ class MoonDevProvider:
         self._note_envelope(meta)
         return rows
 
+    def fetch_raw(
+        self, path: str, params: dict[str, Any] | None = None
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Return ``(raw_rows, envelope_meta)`` with **no** pydantic parsing.
+
+        This exists for the recorder. The tape must store what the API actually
+        said, not our interpretation of it: a wrong model silently corrupts
+        history permanently, whereas raw rows can be re-parsed after a fix.
+        (``PolyDailyRollup`` shipped with wrong field names and yielded None for
+        every value — recorded parsed, that history would be unrecoverable.)
+        """
+        rows, meta = _split_envelope(self._get(path, params))
+        self._note_envelope(meta)
+        return rows, meta
+
     # -- endpoints ---------------------------------------------------
 
     def poly_health(self) -> PolyHealth:

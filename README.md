@@ -16,7 +16,10 @@ data layer. See `CLAUDE.md` for the operating rules — including the absolute
       — Polymarket flow family only; HL-derived signals not yet implemented
       and deliberately not advertised in `capabilities()`
 - [ ] 4. `Venue` protocol + `KalshiVenue` (demo)
-- [ ] 5. `recorder.py` (signals + orderbooks) — run early
+- [~] 5. `recorder.py` — **signal half done and recording**; the orderbook half
+      needs the venue adapter from step 4. Pulled ahead of step 4 deliberately:
+      the whale log's 250-row cap covers only ~20 minutes of flow, so this
+      history can only be accumulated, never back-filled.
 - [ ] 6. Market parser: contract -> typed `Claim`
 - [ ] 7. `costs/` fee model, verified vs live schedule
 - [ ] 8. Translation layer: probability -> edge -> sizing gate

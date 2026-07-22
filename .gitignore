@@ -35,3 +35,6 @@ config/config.yaml
 .DS_Store
 .idea/
 .vscode/
+
+# Tape data — accumulated history, not source
+data/tape/**/*.parquet
