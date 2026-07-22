@@ -1,0 +1,50 @@
+# Kalshi series ticker -> underlying asset symbol.
+#
+# The claim parser is FAIL-CLOSED: a series that is not listed here is rejected
+# as ineligible rather than guessed at. Ticker shapes are not parseable by rule
+# (KXSOLE and KXSOLD are both SOL; KXSHIBA is SHIB, not SHIBA), so the mapping
+# is declared explicitly and auditably instead of inferred.
+#
+# `symbol` is the canonical name the signal layer uses (Hyperliquid coin names).
+# Adding a series here is what makes its markets eligible — deliberately a
+# manual, reviewable step.
+#
+# Observed on tape 2026-07-22. Settlement for all of these is CF Benchmarks.
+
+series:
+  # Bitcoin
+  KXBTC: BTC
+  KXBTCD: BTC
+  KXBTC15M: BTC
+  KXBTCMAXD: BTC
+  # Ether
+  KXETH: ETH
+  KXETHD: ETH
+  KXETH15M: ETH
+  # Solana
+  KXSOLD: SOL
+  KXSOLE: SOL
+  KXSOL15M: SOL
+  # XRP
+  KXXRP: XRP
+  KXXRPD: XRP
+  KXXRP15M: XRP
+  # Dogecoin
+  KXDOGE: DOGE
+  KXDOGED: DOGE
+  KXDOGE15M: DOGE
+  # BNB
+  KXBNB: BNB
+  KXBNBD: BNB
+  KXBNB15M: BNB
+  # Hyperliquid
+  KXHYPE: HYPE
+  KXHYPED: HYPE
+  KXHYPE15M: HYPE
+  # Shiba Inu
+  KXSHIBA: SHIB
+  KXSHIBAD: SHIB
+  # Near
+  KXNEAR15M: NEAR
+  # Zcash
+  KXZEC15M: ZEC

@@ -8,7 +8,7 @@ Data venue and execution venue are completely separate. No order ever touches th
 data layer. See `CLAUDE.md` for the operating rules — including the absolute
 `execute` boundary.
 
-## Status: build step 5 of 19 (tape recorder: signals + orderbooks)
+## Status: build step 6 of 19 (claim parser)
 
 - [x] 1. Scaffold, config schema, `.gitignore`, README, `CLAUDE.md`
 - [x] 2. `DataProvider` protocol + `HyperliquidProvider` + cache + tests
@@ -23,7 +23,9 @@ data layer. See `CLAUDE.md` for the operating rules — including the absolute
       ≈ 20 min of flow) nor prediction-market book depth can be bought later.
       Market data is read from **prod** (demo has no strike fields and no
       depth); execution still targets demo, and this path has no order endpoint.
-- [ ] 6. Market parser: contract -> typed `Claim`
+- [x] 6. Market parser: contract -> typed `Claim` + `scan` command.
+      Structured strikes only — `custom` markets are refused, never
+      regexed out of the title. 2,124 of 2,428 real markets eligible.
 - [ ] 7. `costs/` fee model, verified vs live schedule
 - [ ] 8. Translation layer: probability -> edge -> sizing gate
 - [ ] 9. Shadow evaluator (full eligible universe)
