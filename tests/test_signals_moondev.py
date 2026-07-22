@@ -15,6 +15,7 @@ from tradetk.signals.moondev import (
     MoonDevError,
     MoonDevProvider,
     _epoch_to_dt,
+    parse_daily,
     parse_profitable_traders,
     parse_top_markets,
     parse_top_traders,
@@ -23,36 +24,48 @@ from tradetk.signals.moondev import (
 
 # ── sample payloads (shapes from the spec's field lists) ───────────
 
-WHALES = [
-    {
-        "ts": 1784675040,
-        "wallet": "0xabc",
-        "market_title": "BTC above $70k on 2026-08-01",
-        "market_slug": "btc-70k-2026-08-01",
-        "event_slug": "btc-monthly",
-        "outcome": "Yes",
-        "side": "buy",
-        "price": 0.42,
-        "size": 5000,
-        "usd_amount": 2100.0,
-        "tx_hash": "0xdeadbeef",
-    }
-]
+# Shapes below are the LIVE response shapes captured 2026-07-22, including the
+# envelope wrappers ("trades", "rollup", ...) that the spec's prose omits.
 
-TOP_TRADERS = {"data": [
-    {"wallet": "0xabc", "trade_count": 12, "total_volume": 50000.0,
-     "biggest_trade": 9000.0, "markets_traded": 4, "last_trade_ts": 1784675040},
+WHALE_ROW = {
+    "ts": 1784737175,
+    "wallet": "0x1465B79bfF7992Bc703e1AaFB3683b1089647072",
+    "pseudonym": "Well-To-Do-Code",
+    "market_title": "Will Ethereum dip to $1,500 by December 31, 2026?",
+    "market_slug": "will-ethereum-dip-to-1500-by-december-31-2026-865-787",
+    "event_slug": "what-price-will-ethereum-hit-before-2027",
+    "outcome": "No",
+    "side": "BUY",
+    "price": 0.6399872968670747,
+    "size": 33062.71,
+    "usd_amount": 21159.714399999997,
+    "tx_hash": "0x2bca2c9a5a92d5166f99b6a2694fe8fa723307f51ee09d10034c8a5b973776f7",
+}
+WHALES = {"count": 1, "limit": 1, "full_access": False, "filters": {}, "trades": [WHALE_ROW]}
+
+TOP_TRADERS = {"count": 1, "traders": [
+    {"wallet": "0xabc", "pseudonym": "Handle", "trade_count": 12,
+     "total_volume": 50000.0, "biggest_trade": 9000.0, "markets_traded": 4,
+     "last_trade_ts": 1784675040},
 ]}
 
-TOP_MARKETS = [
-    {"market_title": "BTC 70k", "market_slug": "btc-70k", "whale_trades": 8,
-     "whale_volume": 40000.0, "unique_whales": 5, "biggest_trade": 12000.0},
-]
+TOP_MARKETS = {"count": 1, "markets": [
+    {"market_title": "BTC 70k", "market_slug": "btc-70k", "event_slug": "btc",
+     "whale_trades": 8, "whale_volume": 40000.0, "unique_whales": 5,
+     "biggest_trade": 12000.0, "last_trade_ts": 1784675040},
+]}
 
-PROFITABLE = [
+DAILY = {"count": 1, "days": 30, "rollup": [
+    {"day": "2026-07-22", "trade_count": 1343, "total_volume": 5340099.39,
+     "biggest_trade": 222109.41, "smallest_trade": 1000.0, "avg_trade": 3976.24,
+     "unique_whales": 618, "unique_markets": 429},
+]}
+
+PROFITABLE = {"total": 1, "full_list": False, "traders": [
     {"wallet": "0xabc", "pnl_7d": 1234.5, "volume_7d": 88000.0,
-     "trades_7d": 30, "redeems_7d": 2, "source": "poly"},
-]
+     "trades_7d": 30, "redeems_7d": 2, "source": "poly",
+     "polymarket_link": "https://polymarket.com/0xabc"},
+]}
 
 HEALTH = {"status": "ok", "uptime_minutes": 123.5, "queue_depth": 0,
           "wallets_checked": 900, "profitable_traders": 25, "seen_wallets": 5000}
@@ -65,18 +78,46 @@ def test_parse_whales_fields_and_time() -> None:
     trades = parse_whales(WHALES)
     assert len(trades) == 1
     t = trades[0]
-    assert t.wallet == "0xabc"
-    assert t.price == pytest.approx(0.42)
-    assert t.usd_amount == pytest.approx(2100.0)
+    assert t.wallet.startswith("0x1465")
+    assert t.pseudonym == "Well-To-Do-Code"
+    assert t.price == pytest.approx(0.6399872968670747)
+    assert t.side == "BUY"
     assert t.when.tzinfo is timezone.utc
     assert t.when.year == 2026
 
 
-def test_parse_accepts_bare_list_and_wrapped_dict() -> None:
-    # top-traders payload is wrapped in {"data": [...]}, whales is a bare list.
-    assert len(parse_top_traders(TOP_TRADERS)) == 1
-    assert len(parse_top_markets(TOP_MARKETS)) == 1
+def test_parse_accepts_bare_list_and_every_live_wrapper_key() -> None:
+    """Regression: "trades" and "rollup" wrappers were unknown to the parser,
+    so poly_whales and daily — the two busiest endpoints — raised on every call."""
+    assert len(parse_whales(WHALES)) == 1  # "trades"
+    assert len(parse_daily(DAILY)) == 1  # "rollup"
+    assert len(parse_top_traders(TOP_TRADERS)) == 1  # "traders"
+    assert len(parse_top_markets(TOP_MARKETS)) == 1  # "markets"
     assert len(parse_profitable_traders(PROFITABLE)) == 1
+    assert len(parse_whales([WHALE_ROW])) == 1  # bare list still works
+
+
+def test_daily_rollup_uses_real_field_names() -> None:
+    """The spec's prose says whale_trades/whale_volume; the API returns
+    trade_count/total_volume. Wrong names must fail loudly, not yield None."""
+    row = parse_daily(DAILY)[0]
+    assert row.trade_count == 1343
+    assert row.total_volume == pytest.approx(5340099.39)
+    assert row.unique_markets == 429
+    with pytest.raises(Exception):  # the spec-named shape is not silently accepted
+        parse_daily([{"day": "2026-07-22", "whale_trades": 5, "whale_volume": 1.0}])
+
+
+def test_unknown_single_list_key_falls_back_with_warning(caplog) -> None:
+    payload = {"count": 1, "renamed_rows": [WHALE_ROW]}
+    with caplog.at_level("WARNING"):
+        assert len(parse_whales(payload)) == 1
+    assert "unrecognised row-array key" in caplog.text
+
+
+def test_ambiguous_multiple_lists_raises() -> None:
+    with pytest.raises(MoonDevError, match="cannot locate row array"):
+        parse_whales({"a": [WHALE_ROW], "b": [WHALE_ROW]})
 
 
 def test_parse_unexpected_shape_raises() -> None:
@@ -85,21 +126,19 @@ def test_parse_unexpected_shape_raises() -> None:
 
 
 def test_price_out_of_prob_range_rejected() -> None:
-    bad = [{**WHALES[0], "price": 1.5}]  # implied prob must be 0..1
-    with pytest.raises(Exception):
-        parse_whales(bad)
+    with pytest.raises(Exception):  # implied prob must be 0..1
+        parse_whales([{**WHALE_ROW, "price": 1.5}])
 
 
 def test_nan_amount_rejected() -> None:
-    bad = [{**WHALES[0], "usd_amount": float("nan")}]
     with pytest.raises(Exception):
-        parse_whales(bad)
+        parse_whales([{**WHALE_ROW, "usd_amount": float("nan")}])
 
 
 def test_unknown_field_is_ignored_not_fatal() -> None:
     # External evolving API: a new field must be forward-compatible.
-    trades = parse_whales([{**WHALES[0], "brand_new_field": "surprise"}])
-    assert trades[0].wallet == "0xabc"
+    trades = parse_whales([{**WHALE_ROW, "brand_new_field": "surprise"}])
+    assert trades[0].pseudonym == "Well-To-Do-Code"
 
 
 def test_epoch_seconds_vs_millis() -> None:
@@ -195,6 +234,40 @@ def test_whales_roundtrip_and_clamped_param() -> None:
     p, seen = _provider_capturing(200, WHALES, api_key="k")
     with p:
         trades = p.poly_whales(limit=99999)  # over the standard cap
-    assert trades[0].wallet == "0xabc"
+    assert trades[0].pseudonym == "Well-To-Do-Code"
     # limit was clamped to the standard whale cap before the request.
     assert seen[0].url.params["limit"] == "250"
+
+
+# ── tier reconciliation from the response envelope ─────────────────
+
+
+def test_full_access_flag_is_recorded() -> None:
+    p, _ = _provider_capturing(200, WHALES, api_key="k")  # envelope says False
+    with p:
+        assert p.observed_full_access is None  # nothing observed yet
+        p.poly_whales(limit=5)
+        assert p.observed_full_access is False
+
+
+def test_tier_mismatch_warns(caplog) -> None:
+    """Config claiming qe while the API reports full_access=false means our row
+    caps are wrong and we would under-read the universe silently."""
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=WHALES)  # full_access: False
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    p = MoonDevProvider(api_key="k", tier="qe", client=client)
+    with p, caplog.at_level("WARNING"):
+        p.poly_whales(limit=5)
+    assert "tier mismatch" in caplog.text
+
+
+def test_no_warning_when_tier_matches(caplog) -> None:
+    p, _ = _provider_capturing(200, WHALES, api_key="k")  # standard + False
+    with p, caplog.at_level("WARNING"):
+        p.poly_whales(limit=5)
+    assert "tier mismatch" not in caplog.text

@@ -103,11 +103,12 @@ class PolyWhaleTrade(_MDModel):
 
     ts: int
     wallet: str
+    pseudonym: str | None = None  # display handle; present live, absent from spec
     market_title: str
     market_slug: str
     event_slug: str | None = None
     outcome: str
-    side: str
+    side: str  # "BUY"/"SELL" uppercase live
     price: Finite = Field(ge=0, le=1, description="Global implied prob 0..1.")
     size: Finite = Field(ge=0)
     usd_amount: Finite = Field(gt=0)
@@ -120,6 +121,7 @@ class PolyWhaleTrade(_MDModel):
 
 class PolyTopTrader(_MDModel):
     wallet: str
+    pseudonym: str | None = None
     trade_count: int
     total_volume: Finite = Field(ge=0)
     biggest_trade: Finite = Field(ge=0)
@@ -130,17 +132,28 @@ class PolyTopTrader(_MDModel):
 class PolyTopMarket(_MDModel):
     market_title: str | None = None
     market_slug: str | None = None
+    event_slug: str | None = None
     whale_trades: int
     whale_volume: Finite = Field(ge=0)
     unique_whales: int
     biggest_trade: Finite = Field(ge=0)
+    last_trade_ts: int | None = None
 
 
 class PolyDailyRollup(_MDModel):
+    """Per-UTC-day whale rollup. Field names verified live 2026-07-22 — they are
+    ``trade_count``/``total_volume``, NOT the ``whale_*`` names in the spec's
+    prose. Required (not Optional) so a future rename fails loudly instead of
+    silently yielding None."""
+
     day: str
-    whale_trades: int | None = None
-    whale_volume: Finite | None = None
-    unique_whales: int | None = None
+    trade_count: int
+    total_volume: Finite = Field(ge=0)
+    biggest_trade: Finite = Field(ge=0)
+    smallest_trade: Finite = Field(ge=0)
+    avg_trade: Finite = Field(ge=0)
+    unique_whales: int
+    unique_markets: int
 
 
 class ProfitableTrader(_MDModel):
@@ -157,15 +170,44 @@ class ProfitableTrader(_MDModel):
 # ── Pure parsers (no IO) ───────────────────────────────────────────
 
 
-def _as_rows(payload: Any) -> list[dict[str, Any]]:
-    """Accept either a bare list or a dict wrapping a data array."""
+# Row-array keys seen live (2026-07-22): /whales -> "trades",
+# /whales/daily -> "rollup", /top-traders + /profitable-traders -> "traders",
+# /top-markets -> "markets".
+_ROW_KEYS = ("trades", "rollup", "traders", "markets", "data", "results", "whales", "rows")
+
+
+def _split_envelope(payload: Any) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Split a response into (rows, envelope metadata).
+
+    Responses are either a bare list or ``{...meta, "<key>": [...rows]}``. We try
+    the known row keys first, then fall back to "the only list-valued key" so a
+    renamed wrapper degrades to a warning rather than an outage — an unknown
+    wrapper key previously raised on the two busiest endpoints.
+    """
     if isinstance(payload, list):
-        return payload
+        return payload, {}
     if isinstance(payload, dict):
-        for key in ("data", "results", "whales", "traders", "markets", "rows"):
+        for key in _ROW_KEYS:
             if isinstance(payload.get(key), list):
-                return payload[key]
+                meta = {k: v for k, v in payload.items() if k != key}
+                return payload[key], meta
+        lists = [k for k, v in payload.items() if isinstance(v, list)]
+        if len(lists) == 1:
+            key = lists[0]
+            log.warning(
+                "unrecognised row-array key %r; using it as the row list. "
+                "Add it to _ROW_KEYS once confirmed.", key,
+            )
+            return payload[key], {k: v for k, v in payload.items() if k != key}
+        raise MoonDevError(
+            f"cannot locate row array in payload with keys {sorted(payload)}"
+        )
     raise MoonDevError(f"unexpected payload shape: {type(payload).__name__}")
+
+
+def _as_rows(payload: Any) -> list[dict[str, Any]]:
+    """Rows only, discarding envelope metadata."""
+    return _split_envelope(payload)[0]
 
 
 def parse_whales(payload: Any) -> list[PolyWhaleTrade]:
@@ -220,6 +262,10 @@ class MoonDevProvider:
         self._breaker = breaker or CircuitBreaker()
         # 60 req/s sustained, 200 burst (documented).
         self._limiter = rate_limiter or RateLimiter(rate_per_s=60.0, burst=200.0)
+        # Set from the response envelope's `full_access` flag on the first
+        # authed call — the venue's own statement of our tier, which beats
+        # inferring it from the key suffix or trusting config.
+        self._observed_full_access: bool | None = None
 
     def close(self) -> None:
         if self._owns_client:
@@ -235,7 +281,32 @@ class MoonDevProvider:
         # Honest: only the poly flow family is implemented here.
         return {Capability.POLY_WHALES}
 
+    @property
+    def observed_full_access(self) -> bool | None:
+        """Whether the venue reported full (Quant Elite) access on the last
+        authed call. ``None`` until an endpoint that returns the flag is hit."""
+        return self._observed_full_access
+
     # -- tier clamping ----------------------------------------------
+
+    def _note_envelope(self, meta: dict[str, Any]) -> None:
+        """Reconcile configured tier against the envelope's `full_access` flag.
+
+        A config claiming `qe` while the venue reports `full_access: false`
+        means our row caps are wrong and we would silently under-read, so warn
+        loudly rather than quietly returning a truncated universe.
+        """
+        full = meta.get("full_access")
+        if not isinstance(full, bool):
+            return
+        self._observed_full_access = full
+        expected = self._tier == "qe"
+        if full != expected:
+            log.warning(
+                "tier mismatch: configured tier=%r implies full_access=%s but the "
+                "API reports full_access=%s; row caps may be wrong",
+                self._tier, expected, full,
+            )
 
     def _clamp(self, requested: int | None, kind: str) -> int | None:
         if requested is None:
@@ -287,6 +358,12 @@ class MoonDevProvider:
         except httpx.HTTPError as exc:
             raise ProviderHTTPError(f"moondev request failed: {exc!r}") from exc
 
+    def _get_rows(self, path: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Fetch, split the envelope, and record its tier metadata."""
+        rows, meta = _split_envelope(self._get(path, params))
+        self._note_envelope(meta)
+        return rows
+
     # -- endpoints ---------------------------------------------------
 
     def poly_health(self) -> PolyHealth:
@@ -306,25 +383,32 @@ class MoonDevProvider:
             "min_usd": min_usd, "days": days, "wallet": wallet,
             "market": market, "side": side, "limit": self._clamp(limit, "whales"),
         }
-        return parse_whales(self._get("/api/poly/whales", params))
+        return [PolyWhaleTrade(**r) for r in self._get_rows("/api/poly/whales", params)]
 
     def poly_top_traders(self, *, limit: int | None = None) -> list[PolyTopTrader]:
-        return parse_top_traders(
-            self._get("/api/poly/whales/top-traders", {"limit": self._clamp(limit, "leaderboard")})
-        )
+        return [
+            PolyTopTrader(**r)
+            for r in self._get_rows(
+                "/api/poly/whales/top-traders", {"limit": self._clamp(limit, "leaderboard")}
+            )
+        ]
 
     def poly_top_markets(self, *, limit: int | None = None) -> list[PolyTopMarket]:
-        return parse_top_markets(
-            self._get("/api/poly/whales/top-markets", {"limit": self._clamp(limit, "leaderboard")})
-        )
+        return [
+            PolyTopMarket(**r)
+            for r in self._get_rows(
+                "/api/poly/whales/top-markets", {"limit": self._clamp(limit, "leaderboard")}
+            )
+        ]
 
     def poly_whales_daily(self) -> list[PolyDailyRollup]:
-        return parse_daily(self._get("/api/poly/whales/daily"))
+        return [PolyDailyRollup(**r) for r in self._get_rows("/api/poly/whales/daily")]
 
     def profitable_traders(self, *, limit: int | None = None) -> list[ProfitableTrader]:
-        return parse_profitable_traders(
-            self._get(
+        return [
+            ProfitableTrader(**r)
+            for r in self._get_rows(
                 "/api/poly/profitable-traders",
                 {"limit": self._clamp(limit, "profitable_traders")},
             )
-        )
+        ]

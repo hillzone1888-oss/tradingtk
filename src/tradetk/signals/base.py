@@ -109,7 +109,7 @@ class Candle(_Model):
     close_ms: int
     o: Finite = Field(gt=0)
     h: Finite = Field(gt=0)
-    l: Finite = Field(gt=0)
+    l: Finite = Field(gt=0)  # noqa: E741 - OHLC "low"; name mirrors the venue field
     c: Finite = Field(gt=0)
     v: Finite = Field(ge=0)
     trades: int = Field(ge=0)

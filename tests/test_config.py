@@ -6,7 +6,6 @@ switches each. If one of these fails, a safety boundary has regressed.
 
 from __future__ import annotations
 
-import copy
 
 import pytest
 import yaml
