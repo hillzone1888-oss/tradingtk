@@ -23,6 +23,7 @@ import os
 import signal
 import sys
 import time
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,13 @@ from dotenv import load_dotenv
 
 from tradetk.signals.moondev import TIER_CAPS, MoonDevProvider
 from tradetk.signals.recorder import TapeSource, TapeWriter, poll_source
+from tradetk.venues.books import (
+    book_source,
+    crypto_series,
+    eligible_markets,
+    market_metadata_source,
+)
+from tradetk.venues.kalshi import KalshiVenue
 
 log = logging.getLogger("tradetk.cli.record")
 
@@ -76,6 +84,32 @@ def build_moondev_sources(
             )
         )
     return sources
+
+
+def build_book_sources(
+    venue: KalshiVenue, *, max_hours: float, depth: int, max_markets: int
+) -> tuple[list[TapeSource], dict[str, Any]]:
+    """Discover eligible crypto markets and build book + metadata sources."""
+    series = crypto_series(venue, short_dated_only=True)
+    tickers = [s["ticker"] for s in series if s.get("ticker")]
+    markets = eligible_markets(venue, tickers, max_hours_to_close=max_hours)
+
+    # Deepest books first: with limited polls, the markets we could actually
+    # trade are worth more tape than illiquid ones.
+    markets.sort(key=lambda m: float(m.volume or 0), reverse=True)
+    selected = [m.ticker for m in markets[:max_markets]]
+
+    info = {
+        "crypto_series": len(tickers),
+        "eligible_markets": len(markets),
+        "recording_books_for": len(selected),
+    }
+    if not selected:
+        return [], info
+    return (
+        [book_source(venue, selected, depth=depth), market_metadata_source(venue, tickers)],
+        info,
+    )
 
 
 def poll_all(writer: TapeWriter, sources: list[TapeSource]) -> dict[str, Any]:
@@ -150,6 +184,19 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--tier", default="standard", choices=sorted(TIER_CAPS))
     ap.add_argument("--source", action="append",
                     help="Substring of an endpoint to record; repeatable. Default: all.")
+    ap.add_argument("--books", action="store_true",
+                    help="Also snapshot Kalshi orderbooks for eligible crypto markets.")
+    ap.add_argument("--no-signals", action="store_true",
+                    help="Skip the Moon Dev sources (record books only).")
+    ap.add_argument("--market-data-env", default="prod", choices=sorted(("demo", "prod")),
+                    help="Environment to READ market data from. Demo has no strike data and "
+                         "no depth, so prod is the default; execution is unaffected and this "
+                         "path has no order endpoint.")
+    ap.add_argument("--book-depth", type=int, default=10)
+    ap.add_argument("--book-max-hours", type=float, default=48.0,
+                    help="Only record markets closing within this many hours.")
+    ap.add_argument("--book-max-markets", type=int, default=25,
+                    help="Cap markets snapshotted per poll, deepest first.")
     ap.add_argument("--pretty", action="store_true")
     args = ap.parse_args(argv)
 
@@ -158,24 +205,45 @@ def main(argv: list[str]) -> int:
     truststore.inject_into_ssl()
     load_dotenv()
 
-    key = os.environ.get("MOONDEV_API_KEY")
-    if not key:
-        print(json.dumps({"ok": False,
-                          "error": "MOONDEV_API_KEY is not set; nothing to record."}))
-        return 2
-
     root = Path.cwd()
     writer = TapeWriter(args.tape_dir)
     indent = 2 if args.pretty else None
 
-    with MoonDevProvider(api_key=key, tier=args.tier) as provider:
-        sources = build_moondev_sources(provider, args.tier, args.source)
+    want_signals = not args.no_signals
+    key = os.environ.get("MOONDEV_API_KEY")
+    if want_signals and not key:
+        print(json.dumps({"ok": False,
+                          "error": "MOONDEV_API_KEY is not set; pass --no-signals to record "
+                                   "books only."}, indent=indent))
+        return 2
+
+    with ExitStack() as stack:
+        sources: list[TapeSource] = []
+        discovery: dict[str, Any] = {}
+
+        if want_signals:
+            provider = stack.enter_context(MoonDevProvider(api_key=key, tier=args.tier))
+            sources += build_moondev_sources(provider, args.tier, args.source)
+
+        if args.books:
+            # Read-only market data. The adapter has no order endpoint, so this
+            # cannot touch execution regardless of environment.
+            venue = stack.enter_context(KalshiVenue(args.market_data_env))
+            book_sources, discovery = build_book_sources(
+                venue, max_hours=args.book_max_hours, depth=args.book_depth,
+                max_markets=args.book_max_markets,
+            )
+            discovery["market_data_environment"] = args.market_data_env
+            sources += book_sources
+
         if not sources:
-            print(json.dumps({"ok": False, "error": "no sources matched --source"}, indent=indent))
+            print(json.dumps({"ok": False, "error": "no sources selected",
+                              "discovery": discovery}, indent=indent))
             return 2
 
         if not args.daemon:
             report = poll_all(writer, sources)
+            report["discovery"] = discovery
             report["ok"] = not report["summary"]["errors"]
             print(json.dumps(report, indent=indent, default=str))
             return 0 if report["ok"] else 1
@@ -195,6 +263,7 @@ def main(argv: list[str]) -> int:
                 log.warning("%s file present; stopping.", KILL_FILE)
                 break
             report = poll_all(writer, sources)
+            report["discovery"] = discovery
             polls += 1
 
             sleep_for, why = next_interval(

@@ -8,7 +8,7 @@ Data venue and execution venue are completely separate. No order ever touches th
 data layer. See `CLAUDE.md` for the operating rules — including the absolute
 `execute` boundary.
 
-## Status: build step 4 of 19 (Kalshi venue adapter)
+## Status: build step 5 of 19 (tape recorder: signals + orderbooks)
 
 - [x] 1. Scaffold, config schema, `.gitignore`, README, `CLAUDE.md`
 - [x] 2. `DataProvider` protocol + `HyperliquidProvider` + cache + tests
@@ -18,10 +18,11 @@ data layer. See `CLAUDE.md` for the operating rules — including the absolute
 - [x] 4. `Venue` protocol + `KalshiVenue` — read-only; canonical
       YES-denominated book hides Kalshi's dual-bid representation.
       No order path exists in the adapter, by design.
-- [~] 5. `recorder.py` — **signal half done and recording**; the orderbook half
-      needs the venue adapter from step 4. Pulled ahead of step 4 deliberately:
-      the whale log's 250-row cap covers only ~20 minutes of flow, so this
-      history can only be accumulated, never back-filled.
+- [x] 5. `recorder.py` — signal tape **and** orderbook tape, both recording.
+      Pulled ahead of step 4 deliberately: neither the whale log (250-row cap
+      ≈ 20 min of flow) nor prediction-market book depth can be bought later.
+      Market data is read from **prod** (demo has no strike fields and no
+      depth); execution still targets demo, and this path has no order endpoint.
 - [ ] 6. Market parser: contract -> typed `Claim`
 - [ ] 7. `costs/` fee model, verified vs live schedule
 - [ ] 8. Translation layer: probability -> edge -> sizing gate

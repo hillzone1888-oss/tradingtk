@@ -203,8 +203,21 @@ class TapeWriter:
         *,
         event_ts_field: str | None = None,
         now: datetime | None = None,
+        dedup: bool = True,
     ) -> AppendResult:
-        """Append raw `rows`, skipping any whose content hash is already present."""
+        """Append raw `rows`, skipping any whose content hash is already present.
+
+        `dedup` distinguishes the two kinds of thing a tape holds:
+
+        * **Events** (a whale trade) are immutable and re-delivered by
+          overlapping polls, so identical content is the *same* observation and
+          must collapse. ``dedup=True``.
+        * **State samples** (an orderbook snapshot) are observations of
+          something that changes. Two identical consecutive books are two real
+          data points — "the book was still this at T2" is information the
+          backtest needs. Collapsing them would silently fabricate a gap, so the
+          snapshot time joins the hash. ``dedup=False``.
+        """
         stamp = now or datetime.now(timezone.utc)
         if not rows:
             return AppendResult(endpoint, 0, 0, 0, None, self.row_count(endpoint, stamp))
@@ -214,7 +227,9 @@ class TapeWriter:
                 {
                     "recorded_at": stamp,
                     "endpoint": endpoint,
-                    "row_hash": row_hash(r),
+                    "row_hash": (
+                        row_hash(r) if dedup else row_hash({"_at": stamp.isoformat(), **r})
+                    ),
                     "event_ts": _event_ts_of(r, event_ts_field),
                     "payload": json.dumps(r, sort_keys=True, separators=(",", ":"), default=str),
                 }
@@ -297,6 +312,7 @@ class TapeSource:
     fetch: Callable[[], tuple[list[dict[str, Any]], dict[str, Any]]]
     event_ts_field: str | None = None
     row_cap: int | None = None
+    dedup: bool = True  # False for state samples; see TapeWriter.append
 
 
 @dataclass
@@ -341,7 +357,8 @@ def poll_source(
         )
 
     result = writer.append(
-        source.endpoint, rows, event_ts_field=source.event_ts_field, now=now
+        source.endpoint, rows, event_ts_field=source.event_ts_field, now=now,
+        dedup=source.dedup,
     )
     coverage = coverage_estimate(stamps, source.row_cap) if source.row_cap else {}
 
