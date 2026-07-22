@@ -8,11 +8,13 @@ Data venue and execution venue are completely separate. No order ever touches th
 data layer. See `CLAUDE.md` for the operating rules — including the absolute
 `execute` boundary.
 
-## Status: build step 2 of 19 (Hyperliquid data provider)
+## Status: build step 3 of 19 (Moon Dev provider)
 
 - [x] 1. Scaffold, config schema, `.gitignore`, README, `CLAUDE.md`
 - [x] 2. `DataProvider` protocol + `HyperliquidProvider` + cache + tests
-- [ ] 3. `MoonDevProvider` + typed models + `validate_provider.py`
+- [x] 3. `MoonDevProvider` + typed models + `validate_provider.py`
+      — Polymarket flow family only; HL-derived signals not yet implemented
+      and deliberately not advertised in `capabilities()`
 - [ ] 4. `Venue` protocol + `KalshiVenue` (demo)
 - [ ] 5. `recorder.py` (signals + orderbooks) — run early
 - [ ] 6. Market parser: contract -> typed `Claim`
