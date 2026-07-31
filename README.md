@@ -8,7 +8,7 @@ Data venue and execution venue are completely separate. No order ever touches th
 data layer. See `CLAUDE.md` for the operating rules — including the absolute
 `execute` boundary.
 
-## Status: build step 6 of 19 (claim parser)
+## Status: build step 7 of 19 (cost model)
 
 - [x] 1. Scaffold, config schema, `.gitignore`, README, `CLAUDE.md`
 - [x] 2. `DataProvider` protocol + `HyperliquidProvider` + cache + tests
@@ -26,7 +26,13 @@ data layer. See `CLAUDE.md` for the operating rules — including the absolute
 - [x] 6. Market parser: contract -> typed `Claim` + `scan` command.
       Structured strikes only — `custom` markets are refused, never
       regexed out of the title. 2,124 of 2,428 real markets eligible.
-- [ ] 7. `costs/` fee model, verified vs live schedule
+- [x] 7. `costs/` fee model, verified vs live schedule.
+      Kalshi's published formula with the constants injected, not hardcoded;
+      reproduces all 21 rows of the published 100-contract table. Spread and
+      book-walking slippage in probability points. `inspect` command.
+      Rounding granularity (cent vs centicent) is genuinely ambiguous in the
+      source docs — defaults to the conservative one and is settled by
+      `reconcile_fill` against a real fill.
 - [ ] 8. Translation layer: probability -> edge -> sizing gate
 - [ ] 9. Shadow evaluator (full eligible universe)
 - [ ] 10. `calibrate.py` (reliability diagram + Brier)
