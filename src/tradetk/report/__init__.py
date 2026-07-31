@@ -6,7 +6,18 @@ sample size feels like evidence, and a report is exactly where that rule gets
 quietly broken.
 """
 
-from tradetk.report.console import render_backtest
+from tradetk.report.calibration_html import (
+    render_calibration_report,
+    write_calibration_report,
+)
+from tradetk.report.console import render_backtest, render_calibration
 from tradetk.report.html import render_backtest_report, write_backtest_report
 
-__all__ = ["render_backtest", "render_backtest_report", "write_backtest_report"]
+__all__ = [
+    "render_backtest",
+    "render_backtest_report",
+    "render_calibration",
+    "render_calibration_report",
+    "write_backtest_report",
+    "write_calibration_report",
+]

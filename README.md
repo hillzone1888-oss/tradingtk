@@ -8,7 +8,7 @@ Data venue and execution venue are completely separate. No order ever touches th
 data layer. See `CLAUDE.md` for the operating rules — including the absolute
 `execute` boundary.
 
-## Status: build step 12 of 19 (backtest + baseline strategy)
+## Status: build step 12 of 19 (measurement layer complete)
 
 - [x] 1. Scaffold, config schema, `.gitignore`, README, `CLAUDE.md`
 - [x] 2. `DataProvider` protocol + `HyperliquidProvider` + cache + tests
@@ -40,8 +40,22 @@ data layer. See `CLAUDE.md` for the operating rules — including the absolute
       edge on NO, and a YES-only gate would discard half the universe.
       Deep-tail estimates are rejected by default: that is where the lognormal
       is known to be wrong and where fees are highest per dollar staked.
-- [ ] 9. Shadow evaluator (full eligible universe)
-- [ ] 10. `calibrate.py` (reliability diagram + Brier)
+- [x] 9. Shadow evaluator (full eligible universe) + `shadow` command.
+      Scores every eligible market **including the ones every gate rejected** —
+      those are the population there is otherwise no evidence about. Costs no
+      capital, so evidence accumulates at the rate the universe moves rather
+      than the rate capital recycles: the same 17-minute tape yields 5 trades
+      but **111 scored forecasts**. Writes are idempotent, so re-running cannot
+      inflate the sample.
+- [x] 10. `calibrate` command (reliability diagram + Brier + Murphy).
+      Scores the model **and the venue's own mid on the same contracts**. That
+      comparison, not P&L, is the project's success criterion: if the market
+      forecasts better, every trade pays a spread to be more wrong.
+      Brier is decomposed into reliability / resolution / uncertainty because
+      the fixes are opposite — miscalibration can be remapped, missing signal
+      cannot. Repeated looks at one contract are reported separately from the
+      independent per-contract view, and measured-reference markets are never
+      pooled with fixed strikes.
 - [x] 11. Backtest engine (book-walking fills) + `backtest` command.
       Replays the project's **own recorded tape** — free by construction, since
       nobody sells prediction-market book depth. Fills walk the recorded ladder
@@ -148,6 +162,25 @@ Apache-2.0, vendored into `report/vendor/` and inlined — no CDN, so an archive
 report still renders years later). Both the terminal and HTML views print the
 sample-size caveats **above** the P&L, because a return figure read without them
 feels like evidence.
+
+## Answering "is it working?"
+
+Not from the balance, and not from backtest P&L — both are noise on a $20 book.
+
+```bash
+uv run python -m tradetk.cli.shadow                          # score everything
+uv run python -m tradetk.cli.calibrate --html calib.html     # score the scores
+```
+
+`shadow` runs the strategy over the **whole eligible universe** and records the
+forecast, gates included but not binding. Six slots can only ever produce six
+data points; the universe produces thousands, and a forecast costs nothing to
+score. This is the only realistic route to a readable sample size.
+
+`calibrate` then asks the one question that decides everything: **is the model a
+better forecaster than the price it would have to trade against?** Both are
+scored on identical contracts. If Kalshi's mid wins, there is no edge and the
+report says so in those words.
 
 ## Honesty about a $20 book
 
