@@ -43,7 +43,17 @@ data layer. See `CLAUDE.md` for the operating rules — including the absolute
 - [ ] 9. Shadow evaluator (full eligible universe)
 - [ ] 10. `calibrate.py` (reliability diagram + Brier)
 - [ ] 11. Backtest engine (book-walking fills)
-- [ ] 12. `BaselineVolStrategy`
+- [x] 12. `BaseStrategy` contract + registry, and `BaselineVolStrategy`.
+      Pulled ahead of step 11: the backtest engine needs something to replay,
+      and a backtest harness written before any strategy exists tends to grow
+      an interface the first strategy then has to fight.
+      A strategy returns **only a probability** — never a trade decision — so
+      it inherits the whole gate stack and cannot route around it. It is handed
+      a frozen `MarketSnapshot`, not a provider, so it has no way to fetch
+      future data during a replay. Abstention is a distinct answer from p=0.5.
+      The baseline is implicitly **short volatility** (realized vol < implied,
+      the variance risk premium); `vol_multiplier` is the honest lever for that
+      and is deliberately not fitted to backtest results.
 - [ ] 13. `LiquidationSkewStrategy`
 - [ ] 14. Risk module
 - [ ] 15. Paper executor
