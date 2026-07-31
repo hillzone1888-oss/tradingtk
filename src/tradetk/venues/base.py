@@ -161,6 +161,25 @@ class BinaryBook(_Model):
             proceeds += take * level.price
         return filled, proceeds
 
+    def walk_to_buy_no(self, contracts: Decimal | int) -> tuple[Decimal, Decimal]:
+        """Walk the YES *bid* side buying `contracts` NO -> (filled, cost).
+
+        The duality this module exists to normalise, used in the direction that
+        opens up half the tradeable universe: a resting YES bid at 0.62 *is* a
+        NO offer at 0.38, and the venue fills a NO buy against exactly that
+        order. So buying NO means consuming `yes_bids` from the highest price
+        down — which is the *worst* NO price first, correctly, since the highest
+        YES bid is the cheapest YES exit and therefore the dearest NO entry.
+
+        Cost is ``filled - proceeds`` because each contract taken against a YES
+        bid of ``b`` costs ``1 - b``.
+
+        Without this, an estimate of p = 0.30 against a YES ask of 0.50 reads as
+        "no edge" when it is in fact a 20-point edge on the other side.
+        """
+        filled, proceeds = self.walk_to_sell_yes(contracts)
+        return filled, filled - proceeds
+
 
 class VenueMarket(_Model):
     """A tradeable binary contract, venue-agnostic.

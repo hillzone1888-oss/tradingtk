@@ -8,7 +8,7 @@ Data venue and execution venue are completely separate. No order ever touches th
 data layer. See `CLAUDE.md` for the operating rules — including the absolute
 `execute` boundary.
 
-## Status: build step 7 of 19 (cost model)
+## Status: build step 8 of 19 (translation layer)
 
 - [x] 1. Scaffold, config schema, `.gitignore`, README, `CLAUDE.md`
 - [x] 2. `DataProvider` protocol + `HyperliquidProvider` + cache + tests
@@ -33,7 +33,13 @@ data layer. See `CLAUDE.md` for the operating rules — including the absolute
       Rounding granularity (cent vs centicent) is genuinely ambiguous in the
       source docs — defaults to the conservative one and is settled by
       `reconcile_fill` against a real fill.
-- [ ] 8. Translation layer: probability -> edge -> sizing gate
+- [x] 8. Translation layer: probability -> edge -> sizing gate.
+      Driftless lognormal probability (no scipy), edge in probability points
+      after fees + spread + slippage, fixed-dollar sizing to integer contracts.
+      Evaluates **both sides** — a YES ask of 0.50 against p=0.30 is a 20-point
+      edge on NO, and a YES-only gate would discard half the universe.
+      Deep-tail estimates are rejected by default: that is where the lognormal
+      is known to be wrong and where fees are highest per dollar staked.
 - [ ] 9. Shadow evaluator (full eligible universe)
 - [ ] 10. `calibrate.py` (reliability diagram + Brier)
 - [ ] 11. Backtest engine (book-walking fills)

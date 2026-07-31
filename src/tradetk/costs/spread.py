@@ -23,7 +23,7 @@ from decimal import Decimal
 from typing import Any
 
 from tradetk.costs.fees import KalshiFeeModel
-from tradetk.venues.base import BinaryBook
+from tradetk.venues.base import BinaryBook, Side
 
 PP = Decimal(100)  # dollars -> probability points
 
@@ -44,9 +44,11 @@ class ExecutionCost:
     fee_pp: Decimal
     total_cost_pp: Decimal
     total_cost_dollars: Decimal
+    side: str = "yes"
 
     def as_dict(self) -> dict[str, Any]:
         return {
+            "side": self.side,
             "contracts_requested": self.contracts_requested,
             "contracts_filled": str(self.contracts_filled),
             "fully_filled": self.fully_filled,
@@ -73,22 +75,32 @@ def spread_pp(book: BinaryBook) -> Decimal:
     return (s * PP) if s is not None else Decimal(0)
 
 
-def buy_cost(
+def execution_cost(
     book: BinaryBook,
     contracts: int,
     fee_model: KalshiFeeModel,
     *,
+    side: Side = Side.yes,
     is_maker: bool = False,
     multiplier: Decimal | None = None,
 ) -> ExecutionCost:
-    """Cost of buying `contracts` YES by crossing the ask side.
+    """Cost of buying `contracts` of `side` by crossing that side's offers.
 
-    Slippage is measured against the best ask, i.e. the price a naive model
-    would assume the whole order fills at. Fees are computed on the average
-    price actually paid, not on the top of book.
+    Side-symmetric on purpose. Buying NO consumes the resting YES bids (see
+    :meth:`BinaryBook.walk_to_buy_no`), and Kalshi's fee formula is symmetric
+    under ``P -> 1-P`` because it is proportional to ``P(1-P)`` — so the same
+    fee model prices both sides with no special-casing.
+
+    Slippage is measured against the best price on the side being bought, i.e.
+    what a naive model would assume the whole order fills at. Fees are computed
+    on the average price actually paid, not on the top of book.
     """
-    filled, notional = book.walk_to_buy_yes(contracts)
-    best = book.best_yes_ask
+    if side is Side.yes:
+        filled, notional = book.walk_to_buy_yes(contracts)
+        best = book.best_yes_ask
+    else:
+        filled, notional = book.walk_to_buy_no(contracts)
+        best = book.best_no_ask
     avg = (notional / filled) if filled > 0 else None
 
     slippage = ((avg - best) * PP) if (avg is not None and best is not None) else Decimal(0)
@@ -116,6 +128,21 @@ def buy_cost(
         fee_pp=fee_points,
         total_cost_pp=slippage + fee_points,
         total_cost_dollars=notional + quote.fee,
+        side=side.value,
+    )
+
+
+def buy_cost(
+    book: BinaryBook,
+    contracts: int,
+    fee_model: KalshiFeeModel,
+    *,
+    is_maker: bool = False,
+    multiplier: Decimal | None = None,
+) -> ExecutionCost:
+    """Cost of buying `contracts` YES. Thin alias for the YES side."""
+    return execution_cost(
+        book, contracts, fee_model, side=Side.yes, is_maker=is_maker, multiplier=multiplier
     )
 
 

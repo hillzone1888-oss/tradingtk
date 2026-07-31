@@ -27,23 +27,10 @@ import truststore
 from tradetk.costs.fees import FeeRounding, KalshiFeeModel
 from tradetk.costs.spread import round_trip_cost
 from tradetk.translation.claims import ClaimParseError, UnderlyingRegistry, parse_claim
+from tradetk.translation.sizing import contracts_for_stake
 from tradetk.venues.kalshi import KalshiVenue
 
 log = logging.getLogger("tradetk.cli.inspect")
-
-
-def contracts_for_stake(stake: Decimal, price: Decimal, fee_per_contract: Decimal) -> int:
-    """``floor(stake / (price + fee_per_contract))``, minimum 1.
-
-    Sizing is in **contracts**, never dollars: contracts are indivisible, so the
-    dollar target is a constraint and the contract count is the decision. The
-    caller still has to check that even one contract clears the per-position
-    ceiling — that gate lives in the risk module, not here.
-    """
-    unit = price + fee_per_contract
-    if unit <= 0:
-        return 1
-    return max(1, int(stake / unit))
 
 
 def inspect_market(
