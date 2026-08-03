@@ -19,6 +19,37 @@ Format:
 
 ---
 
+## 2026-08-03 — Alpaca paper account retained as a future second venue   [applied]
+
+**What:** an Alpaca **paper** account is kept and its credentials belong in the
+cloud environment (`ALPACA_API_KEY_ID`, `ALPACA_API_SECRET`,
+`ALPACA_BASE_URL=https://paper-api.alpaca.markets/v2`). No code reads them yet
+and no routine uses them.
+
+**Why:** the operator wants a paper-money venue on hand for strategy work.
+Decision reaffirmed after the constraint below was raised.
+
+**The constraint, recorded so nobody rediscovers it the hard way:** Alpaca
+**cannot** paper-trade what this toolkit trades. tradetk prices Kalshi binary
+event contracts ("BTC above $100k at 3pm ET", resolving YES/NO). Alpaca trades
+equities and crypto spot. There is no Alpaca instrument corresponding to a Kalshi
+contract, so an Alpaca account cannot simulate any current tradetk strategy —
+not approximately, not as a proxy. The venue-correct paper paths are Kalshi's
+**demo** environment (already the default) and build **step 15**, the paper
+executor that fills against real recorded books using the live cost code.
+
+**Where Alpaca does earn its place:** as the broker for a *separate* equities
+agent — its own claim type, its own strategy, its own build steps. That is real
+work and is not scoped yet.
+
+**Risk if wrong:** none to the current system, since nothing reads these
+credentials. The risk is only of confusion later — someone seeing Alpaca keys in
+the environment and assuming tradetk results were paper-traded through them.
+This entry exists to prevent exactly that.
+
+**Outstanding:** only the key **ID** has been supplied; the matching secret is
+needed before anything can connect.
+
 ## 2026-08-03 — routine harness adopted   [applied]
 
 **What:** the toolkit is now driven by scheduled Claude Code routines
