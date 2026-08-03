@@ -106,8 +106,25 @@ def build_book_sources(
     }
     if not selected:
         return [], info
+    # ORDER IS LOAD-BEARING: metadata BEFORE books.
+    #
+    # The shadow evaluator resolves a ticker's claim strictly as-of the book's
+    # timestamp, and metadata recorded later is invisible by design (that guard
+    # is what stops a backtest reading contract terms it could not have known).
+    # With books polled first, every book in a poll predates its own poll's
+    # metadata by a few seconds and can never be parsed into a claim.
+    #
+    # A daemon run hid this: poll N's books resolved against poll N-1's
+    # metadata, so only the very first poll was lost. A `--once` run — which is
+    # exactly what the scheduled sweep does — lost *everything*, silently:
+    # 25 books captured, 25 skipped as `no_parseable_claim`, zero records
+    # written, exit code 0.
+    #
+    # Recording metadata first makes the ordering true rather than lucky: the
+    # terms genuinely were captured before the book, so the as-of guard is
+    # satisfied honestly instead of being relaxed.
     return (
-        [book_source(venue, selected, depth=depth), market_metadata_source(venue, tickers)],
+        [market_metadata_source(venue, tickers), book_source(venue, selected, depth=depth)],
         info,
     )
 

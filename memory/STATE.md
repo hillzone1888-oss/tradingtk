@@ -36,34 +36,30 @@ Update the fields below at the end of every run. If nothing changed, say so —
 
 ## Evidence on hand
 
-- Shadow log: 111 records, 25 distinct contracts, `baseline_vol` only, all from
-  the 2026-07-22 tape. See `uv run python -m tradetk.cli.shadow --stats`.
+- Shadow log: 161 records, 52 distinct contracts, `baseline_vol` only, spanning
+  the 2026-07-22 tape and 2026-08-03. See `uv run python -m tradetk.cli.shadow --stats`.
 - Nothing has resolved in volume yet. Any calibration number below a few hundred
   resolved contracts is a placeholder, not a finding.
 
-## ⚠️ OPEN BUG — a fresh sweep adds no evidence (2026-08-03)
+## FIXED 2026-08-03 — the sweep was writing zero records
 
-A full sweep was run by hand: `record --once --books` wrote 2,512 rows and
-captured 25 orderbooks; `shadow` then reported `written: 0, duplicates: 111`.
-Every scored observation was from July. **The 25 new observations were all
-skipped**, so the sweep accumulated nothing.
+`record` polled **books before metadata**. The shadow evaluator resolves a
+claim strictly as-of the book's timestamp, so metadata written 4 seconds later
+was invisible, and every book in a poll was skipped as `no_parseable_claim`.
 
-Ruled out already — do not re-check these:
-- all 25 tickers have market metadata on tape (25/25 matched);
-- all 25 series are in `config/underlyings.yaml`;
-- all 25 have structured strikes (13 `greater`, 9 `greater_or_equal`,
-  3 `between`) with floor/cap present — none are `custom`;
-- none had closed (all `status=active`, ~6 minutes to close).
+A daemon run hid it — poll N resolved against poll N-1's metadata, so only the
+first poll was lost. A `--once` run, which is exactly what the scheduled sweep
+does, lost **everything**: 25 books captured, 25 skipped, `written: 0`, exit 0.
+A silent, total loss of evidence that looked like a clean run.
 
-Prime remaining suspect: **no as-of candle/vol data for today.** `record` does
-not capture Hyperliquid candles — only Kalshi books/metadata and the Moon Dev
-signal endpoints — so the evaluator's `snapshot_at()` may be returning `None`
-for every fresh observation, and the skip is being counted under an existing
-reason rather than its own.
+Fix: metadata is polled first, so the terms genuinely predate the book and the
+as-of guard is satisfied honestly rather than relaxed. Pinned by
+`tests/test_cli_record.py::test_metadata_is_recorded_before_books` — **if that
+test ever fails, scheduled sweeps are accumulating nothing.**
 
-**Until this is fixed the routines should stay disabled**: they would run six
-times a day and log nothing, which is worse than not running, because the commit
-history would look like evidence accumulating.
+Verified after the fix: `written: 50`, observations scored 111 → 161, distinct
+contracts 25 → 52. The residual `no_parseable_claim: 50` is historical (July's
+first poll plus today's pre-fix poll) and is not recoverable.
 
 ## Open questions for the human
 

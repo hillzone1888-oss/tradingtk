@@ -82,3 +82,49 @@ def test_summary_reports_tightest_suggested_interval(tmp_path) -> None:
         s["coverage"]["suggested_max_interval_seconds"] for s in report["sources"]
     ]
     assert report["summary"]["suggested_interval_seconds"] == min(suggestions)
+
+
+# ── source ordering: metadata must be recorded before books ────────
+
+
+def test_metadata_is_recorded_before_books(monkeypatch) -> None:
+    """The single most expensive bug this project has hit, pinned.
+
+    The shadow evaluator resolves a claim strictly as-of the book's timestamp,
+    so metadata written *after* a book is invisible to it. With books polled
+    first, every book in a `--once` run was unparseable and the sweep wrote zero
+    records while exiting 0 — a silent, total loss of evidence that a daemon run
+    masked, because there poll N could see poll N-1's metadata.
+
+    If this test fails, a scheduled sweep is accumulating nothing.
+    """
+    from tradetk.cli import record as rec
+
+    class _Market:
+        def __init__(self, ticker: str) -> None:
+            self.ticker = ticker
+            self.volume = 10
+
+    monkeypatch.setattr(rec, "crypto_series", lambda venue, short_dated_only=True: [
+        {"ticker": "KXBTCD"}
+    ])
+    monkeypatch.setattr(
+        rec, "eligible_markets",
+        lambda venue, tickers, max_hours_to_close: [_Market("KXBTCD-A")],
+    )
+    monkeypatch.setattr(rec, "book_source", lambda *a, **k: TapeSource(
+        name="books", endpoint="kalshi_orderbook", fetch=lambda: ([], {})
+    ))
+    monkeypatch.setattr(rec, "market_metadata_source", lambda *a, **k: TapeSource(
+        name="markets", endpoint="kalshi_markets", fetch=lambda: ([], {})
+    ))
+
+    sources, info = rec.build_book_sources(
+        object(), max_hours=48.0, depth=10, max_markets=25
+    )
+    endpoints = [s.endpoint for s in sources]
+    assert endpoints.index("kalshi_markets") < endpoints.index("kalshi_orderbook"), (
+        "metadata must be polled before books, or books cannot be parsed into "
+        "claims within the same poll"
+    )
+    assert info["recording_books_for"] == 1
