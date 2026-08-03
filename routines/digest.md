@@ -17,7 +17,7 @@ memory of previous runs.
 **Step 2 — gather.** All read-only:
 
 ```
-uv run python -m tradetk.cli.shadow --stats --json --pretty
+uv run python -m tradetk.cli.shadow --stats --pretty
 uv run python -m tradetk.cli.calibrate --json --pretty
 ```
 

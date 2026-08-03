@@ -36,9 +36,34 @@ Update the fields below at the end of every run. If nothing changed, say so —
 
 ## Evidence on hand
 
-- Shadow log: see `uv run python -m tradetk.cli.shadow --stats`.
+- Shadow log: 111 records, 25 distinct contracts, `baseline_vol` only, all from
+  the 2026-07-22 tape. See `uv run python -m tradetk.cli.shadow --stats`.
 - Nothing has resolved in volume yet. Any calibration number below a few hundred
   resolved contracts is a placeholder, not a finding.
+
+## ⚠️ OPEN BUG — a fresh sweep adds no evidence (2026-08-03)
+
+A full sweep was run by hand: `record --once --books` wrote 2,512 rows and
+captured 25 orderbooks; `shadow` then reported `written: 0, duplicates: 111`.
+Every scored observation was from July. **The 25 new observations were all
+skipped**, so the sweep accumulated nothing.
+
+Ruled out already — do not re-check these:
+- all 25 tickers have market metadata on tape (25/25 matched);
+- all 25 series are in `config/underlyings.yaml`;
+- all 25 have structured strikes (13 `greater`, 9 `greater_or_equal`,
+  3 `between`) with floor/cap present — none are `custom`;
+- none had closed (all `status=active`, ~6 minutes to close).
+
+Prime remaining suspect: **no as-of candle/vol data for today.** `record` does
+not capture Hyperliquid candles — only Kalshi books/metadata and the Moon Dev
+signal endpoints — so the evaluator's `snapshot_at()` may be returning `None`
+for every fresh observation, and the skip is being counted under an existing
+reason rather than its own.
+
+**Until this is fixed the routines should stay disabled**: they would run six
+times a day and log nothing, which is worse than not running, because the commit
+history would look like evidence accumulating.
 
 ## Open questions for the human
 

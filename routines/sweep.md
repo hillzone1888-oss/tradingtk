@@ -23,22 +23,36 @@ only commands you may run are the read-only ones listed there.
 endpoint on this path.
 
 ```
-uv run python -m tradetk.cli.record --once --books --json
+uv run python -m tradetk.cli.record --once --books --pretty
 ```
 
-If this fails, do not continue to step 3 — scoring a universe against a stale or
-absent tape produces forecasts that look like evidence and are not. Skip to
-step 5 and report the failure.
+`record` has **no `--json` flag** — `--pretty` is how you get readable JSON.
+Passing `--json` makes argparse exit non-zero and the whole run fails.
 
-Read the JSON it prints. If it reports a **tape gap**, that is flow that was
-never captured and cannot be recovered; note the gap length, it belongs in the
-digest.
+**Judge success by the book sources, not by the top-level `ok` field.** `ok`
+goes `false` if *any* source failed, and the Moon Dev signal endpoints return
+401 whenever `MOONDEV_API_KEY` is unset — which is the normal state. What
+matters is `discovery.recording_books_for` being non-zero and the orderbook
+source not appearing in `summary.errors`. If the *books* failed, do not continue
+to step 3: scoring a universe against a stale or absent tape produces forecasts
+that look like evidence and are not. Skip to step 5 and report it.
+
+If it reports a **tape gap**, that is flow that was never captured and cannot be
+recovered; note the gap length, it belongs in the digest.
 
 **Step 3 — score the universe.**
 
 ```
-uv run python -m tradetk.cli.shadow --json --pretty
+uv run python -m tradetk.cli.shadow --pretty
 ```
+
+`shadow` also has **no `--json` flag**; `--pretty` is the JSON output.
+
+**Check `write.written`.** If it is `0` while `write.duplicates` is non-zero, the
+run scored only observations already in the log and **this sweep added no
+evidence** — which is the one failure that looks exactly like success. Say so in
+the commit message and notify. A known open issue as of 2026-08-03: a fresh book
+capture produced 25 observations and zero new records, cause not yet established.
 
 This scores every eligible market, including the ones every gate rejected —
 those are the population there is otherwise no evidence about, so do not filter

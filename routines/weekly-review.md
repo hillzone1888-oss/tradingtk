@@ -19,7 +19,7 @@ rejected.
 **Step 2 — the full picture.** Read-only:
 
 ```
-uv run python -m tradetk.cli.shadow --stats --json --pretty
+uv run python -m tradetk.cli.shadow --stats --pretty
 uv run python -m tradetk.cli.calibrate --json --pretty
 uv run python -m tradetk.cli.calibrate --html memory/reports/calibration-<YYYY-MM-DD>.html
 ```
