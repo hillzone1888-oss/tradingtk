@@ -32,13 +32,13 @@ calibration data exists.
 from __future__ import annotations
 
 from tradetk.enums import Capability
-from tradetk.signals.base import assert_fresh, StaleDataError
 from tradetk.strategy.base import (
     BaseStrategy,
     StrategyContext,
     StrategyOpinion,
     register_strategy,
 )
+from tradetk.strategy.guards import snapshot_guard
 from tradetk.translation.claims import Claim
 from tradetk.translation.probability import (
     ProbabilityError,
@@ -93,34 +93,14 @@ class BaselineVolStrategy(BaseStrategy):
     def estimate(self, claim: Claim, context: StrategyContext) -> StrategyOpinion:
         snap = context.snapshot
 
-        # The snapshot must actually be about this claim's underlying. Silently
-        # pricing a BTC claim off ETH vol is the kind of wiring error that
-        # produces confident, wrong numbers indefinitely.
-        if snap.symbol.upper() != claim.underlying.upper():
-            return self.abstain(
-                claim,
-                f"snapshot is for {snap.symbol}, claim is on {claim.underlying}",
-            )
-
-        try:
-            assert_fresh(snap.as_of, self.max_snapshot_age_seconds, now=context.now)
-        except StaleDataError as exc:
-            return self.abstain(claim, f"stale market data: {exc}")
-
-        if snap.n_vol_samples < self.min_vol_samples:
-            return self.abstain(
-                claim,
-                f"volatility estimated from {snap.n_vol_samples} samples, below the "
-                f"minimum of {self.min_vol_samples}",
-            )
-
-        if snap.sigma_annual <= 0:
-            return self.abstain(
-                claim, f"non-positive volatility ({snap.sigma_annual}) is not a usable input"
-            )
-
-        if snap.spot <= 0:
-            return self.abstain(claim, f"non-positive spot ({snap.spot})")
+        reason = snapshot_guard(
+            claim,
+            context,
+            min_vol_samples=self.min_vol_samples,
+            max_snapshot_age_seconds=self.max_snapshot_age_seconds,
+        )
+        if reason is not None:
+            return self.abstain(claim, reason)
 
         sigma = snap.sigma_annual * self.vol_multiplier
         try:

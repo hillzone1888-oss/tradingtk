@@ -8,7 +8,7 @@ Data venue and execution venue are completely separate. No order ever touches th
 data layer. See `CLAUDE.md` for the operating rules — including the absolute
 `execute` boundary.
 
-## Status: build step 12 of 19 (measurement layer complete)
+## Status: build step 13 of 19 (two strategies to compare; risk layer next)
 
 - [x] 1. Scaffold, config schema, `.gitignore`, README, `CLAUDE.md`
 - [x] 2. `DataProvider` protocol + `HyperliquidProvider` + cache + tests
@@ -78,7 +78,33 @@ data layer. See `CLAUDE.md` for the operating rules — including the absolute
       The baseline is implicitly **short volatility** (realized vol < implied,
       the variance risk premium); `vol_multiplier` is the honest lever for that
       and is deliberately not fitted to backtest results.
-- [ ] 13. `LiquidationSkewStrategy`
+- [x] 13. `LiquidationSkewStrategy` + the `liquidations` signal types.
+      The baseline's lognormal with **one term added**: a log-drift set by the
+      imbalance of recent forced liquidations. Only one term changes, so step
+      10 can attribute any difference in Brier score to it and to nothing else.
+      The tilt is **capped, not fitted** — `max_drift_sigma` (default 0.25) is
+      the shift at a perfectly one-sided window, measured in the claim's *own*
+      horizon sigmas, so 0.25σ means the same thing on a 2-hour and a 20-hour
+      contract. The **sign is a declared hypothesis**, not a finding:
+      `regime: continuation | reversion` are both well-attested readings of
+      forced flow, so the parameter is recorded in the method string and
+      calibration adjudicates it — flipping it after seeing results on the same
+      tape is fitting, and is called out as such in the code.
+      It **abstains rather than falling back** to the baseline whenever the
+      evidence is missing or thin (no profile, wrong asset, stale, few events,
+      small notional, one whale holding up the imbalance, or a claim resolving
+      beyond the signal's horizon); a fallback would make its calibration score
+      the baseline's score under a different name.
+      `signals/liquidations.py` types the event and reduces a stream to one
+      window statistic, refusing — not filtering — the two inputs that produce
+      plausible wrong numbers: another asset's events, and events after `as_of`.
+      **The side convention is pinned by a test** (`long` = longs force-*sold* =
+      downward pressure): feeds disagree, the two conventions are
+      indistinguishable from the numbers, and the error would silently invert
+      every trade.
+      ⚠️ **Not runnable yet, by design.** It declares `Capability.LIQUIDATIONS`,
+      which no provider advertises (Moon Dev's HL-derived endpoints are not
+      implemented), so selecting it halts at startup instead of running on zeros.
 - [ ] 14. Risk module
 - [ ] 15. Paper executor
 - [ ] 16. `propose` command + `CLAUDE.md` execute boundary

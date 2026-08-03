@@ -21,10 +21,12 @@ from tradetk.strategy.base import (
 # without the import the strategy is invisible to config, and without the noqa
 # ruff removes it as unused and silently breaks strategy selection.
 from tradetk.strategy.baseline_vol import BaselineVolStrategy  # noqa: E402,F401
+from tradetk.strategy.liquidation_skew import LiquidationSkewStrategy  # noqa: E402,F401
 
 __all__ = [
     "BaseStrategy",
     "BaselineVolStrategy",
+    "LiquidationSkewStrategy",
     "MarketSnapshot",
     "StrategyContext",
     "StrategyError",

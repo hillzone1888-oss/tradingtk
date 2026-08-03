@@ -62,6 +62,19 @@ fees:
 strategy:
   name: baseline_vol               # baseline_vol | liquidation_skew
   realized_vol_lookback_days: 30
+  # liquidation_skew only. Selecting it HALTS at startup until a provider
+  # advertises the `liquidations` capability — by design, not a bug.
+  # params:
+  #   regime: continuation         # continuation | reversion — a HYPOTHESIS under
+  #                                # test, declared before the run. Flipping it
+  #                                # after seeing results on the same tape is fitting.
+  #   window_minutes: 60           # must match the window the profile was built with
+  #   max_drift_sigma: 0.25        # tilt at a perfectly one-sided window, in horizon sigmas
+  #   vol_bump: 1.0                # 1.0 = make no claim about cascade vol
+  #   min_events: 10               # evidence gates: per-underlying, set them deliberately
+  #   min_notional_usd: 250000
+  #   max_concentration: 0.5       # above this it is one margin call, not a cascade
+  #   max_horizon_hours: 24        # beyond this the claim is not about this flow
 
 recorder:
   snapshot_interval_seconds: 60    # orderbook + derived-signal polling cadence
