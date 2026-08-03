@@ -147,11 +147,15 @@ src/tradetk/
   state/                # positions, P&L, trade log (SQLite)
   backtest/             # tape replay, as-of market data, settlement, engine
   report/               # rich terminal + self-contained HTML (vendored charts)
+  notify/               # outbound Telegram push — text only, no venue access
   cli/                  # one module per command; structured JSON output
+memory/                 # what a scheduled run reads on wake-up and writes back
+routines/               # scheduled-run prompts + the contract they follow
 scripts/                # calibrate.py, validate_provider.py, ...
 reference/              # cloned docs (gitignored) — read, do not vendor
 proposals/              # generated order proposals (gitignored)
-data/, state/           # tape, cache, sqlite (gitignored)
+data/shadow/            # accumulated evidence — COMMITTED (calibration needs it)
+data/tape/, state/      # tape, cache, sqlite (gitignored)
 ```
 
 > Note: the spec's tree lists `signals/`, `translation/`, etc. at repo root. They
@@ -167,6 +171,25 @@ data/, state/           # tape, cache, sqlite (gitignored)
   Re-validates against the live book + risk state, refuses if anything material
   moved, and requires interactive typed confirmation. Refuses to run
   non-interactively. **The human runs this, never the assistant.**
+
+## Running it unattended (routines)
+
+Scheduled Claude Code runs drive the toolkit on a cron — no daemon, no service,
+no Python process in a loop. A routine wakes up stateless, reads `memory/`, runs
+the toolkit's own read-only commands, writes back what it learned, and commits.
+
+| Routine | When (UTC) | Job |
+|---|---|---|
+| `sweep` | every 4h | record a slice → score the whole universe → commit the forecasts |
+| `digest` | daily 13:00 | yesterday's evidence + the calibration headline, pushed to Telegram |
+| `weekly-review` | Sun 22:00 | full calibration, model vs. mid, written recommendations |
+
+The agent supplies scheduling, summarising and memory. It supplies **no opinions
+about markets** — every decision that matters is the same deterministic, tested
+Python it was before. And the execution boundary above binds a routine exactly as
+it binds a person: unattended is the case it was written for. See
+`routines/README.md` for the contract and `memory/GUARDRAILS.md` for the rules
+every run reads first.
 
 ## Backtesting
 

@@ -9,11 +9,19 @@ reference/
 
 # ─── Generated / runtime state ─────────────────────────────────────
 proposals/
-data/
 state/
 *.sqlite
 *.sqlite-journal
-*.parquet
+
+# `data/*` rather than `data/` so one child can be re-included below: git will
+# not descend into an excluded directory, so a blanket `data/` makes the
+# negation impossible.
+data/*
+# The shadow log IS committed. It is the accumulated evidence, the only thing
+# calibration can be computed from, and it is produced by scheduled runs in
+# ephemeral cloud environments — uncommitted, it would not survive the run that
+# created it. Small: one partition per day of scored forecasts.
+!data/shadow/
 
 # ─── Python ────────────────────────────────────────────────────────
 __pycache__/
@@ -36,5 +44,7 @@ config/config.yaml
 .idea/
 .vscode/
 
-# Tape data — accumulated history, not source
-data/tape/**/*.parquet
+# Tape data — large, rewritten per poll, and git handles it badly. Recorded
+# fresh and consumed within a run. (Scoped, not a blanket `*.parquet`: the
+# shadow log above is parquet too and must not be caught by this.)
+data/tape/
