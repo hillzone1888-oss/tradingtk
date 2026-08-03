@@ -47,8 +47,13 @@ credentials. The risk is only of confusion later — someone seeing Alpaca keys 
 the environment and assuming tradetk results were paper-traded through them.
 This entry exists to prevent exactly that.
 
-**Outstanding:** only the key **ID** has been supplied; the matching secret is
-needed before anything can connect.
+**Status:** credentials **verified working** 2026-08-03 against
+`paper-api.alpaca.markets/v2/account` — an active paper account with $100k of
+simulated cash and no open positions. Two earlier key pairs returned 401; Alpaca
+invalidates the previous key the moment a new one is generated, so always copy
+the id and the secret from the same screen in one go.
+
+The account is live and idle. Nothing in this repository reads it.
 
 ## 2026-08-03 — routine harness adopted   [applied]
 
