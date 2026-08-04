@@ -23,20 +23,8 @@ only commands you may run are the read-only ones listed there.
 endpoint on this path.
 
 ```
-uv run python -m tradetk.cli.record --once --books --no-signals --pretty
+uv run python -m tradetk.cli.record --once --pretty
 ```
-
-Two flags here are load-bearing and both were learned the hard way:
-
-- **`--no-signals` is required**, not optional. `record` refuses to start at all
-  if `MOONDEV_API_KEY` is unset and you have not explicitly said you only want
-  books — it exits 2 before capturing anything. That gate is correct behaviour:
-  silently skipping a data source you asked for is worse than refusing. The
-  sweep genuinely only wants books (`baseline_vol` uses no Moon Dev signal), so
-  it says so explicitly. If you ever *do* want the signal endpoints recorded,
-  run `record` separately for them rather than removing this flag.
-- **`--json` does not exist.** `--pretty` is how you get readable JSON; `--json`
-  makes argparse exit non-zero and the whole run fails.
 
 **Judge success by `discovery.recording_books_for` being non-zero and the
 orderbook source not appearing in `summary.errors`.** If the books failed, do

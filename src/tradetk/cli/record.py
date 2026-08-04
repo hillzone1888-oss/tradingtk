@@ -5,11 +5,11 @@ well as inside the loop (``--daemon``), because no capability may exist only in 
 long-running process. Output is JSON on stdout; ``--pretty`` indents it.
 
 Records Kalshi orderbook + market metadata snapshots for eligible crypto
-markets (``--books``). Any history beyond the recorded window has to be
-accumulated by polling and cannot be recovered afterwards.
+markets. Any history beyond the recorded window has to be accumulated by
+polling and cannot be recovered afterwards.
 
-    uv run python -m tradetk.cli.record --once --books --pretty
-    uv run python -m tradetk.cli.record --daemon --books --interval 900
+    uv run python -m tradetk.cli.record --once --pretty
+    uv run python -m tradetk.cli.record --daemon --interval 300
 
 Stop a daemon with Ctrl-C, or by creating a ``KILL`` file in the project root.
 """
@@ -156,8 +156,6 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--min-interval", type=float, default=60.0,
                     help="Never poll faster than this, whatever density suggests (default 60).")
     ap.add_argument("--tape-dir", default="data/tape")
-    ap.add_argument("--books", action="store_true",
-                    help="Snapshot Kalshi orderbooks for eligible crypto markets.")
     ap.add_argument("--market-data-env", default="prod", choices=sorted(("demo", "prod")),
                     help="Environment to READ market data from. Demo has no strike data and "
                          "no depth, so prod is the default; execution is unaffected and this "
@@ -181,21 +179,18 @@ def main(argv: list[str]) -> int:
 
     with ExitStack() as stack:
         sources: list[TapeSource] = []
-        discovery: dict[str, Any] = {}
-
-        if args.books:
-            # Read-only market data. The adapter has no order endpoint, so this
-            # cannot touch execution regardless of environment.
-            venue = stack.enter_context(KalshiVenue(args.market_data_env))
-            book_sources, discovery = build_book_sources(
-                venue, max_hours=args.book_max_hours, depth=args.book_depth,
-                max_markets=args.book_max_markets,
-            )
-            discovery["market_data_environment"] = args.market_data_env
-            sources += book_sources
+        # Read-only market data. The adapter has no order endpoint, so this
+        # cannot touch execution regardless of environment.
+        venue = stack.enter_context(KalshiVenue(args.market_data_env))
+        book_sources, discovery = build_book_sources(
+            venue, max_hours=args.book_max_hours, depth=args.book_depth,
+            max_markets=args.book_max_markets,
+        )
+        discovery["market_data_environment"] = args.market_data_env
+        sources += book_sources
 
         if not sources:
-            print(json.dumps({"ok": False, "error": "no sources selected",
+            print(json.dumps({"ok": False, "error": "no eligible markets to record",
                               "discovery": discovery}, indent=indent))
             return 2
 
