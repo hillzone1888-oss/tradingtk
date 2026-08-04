@@ -17,6 +17,7 @@ dependencies = [
     # root CA (uv already needs --native-tls for the same reason).
     "truststore>=0.9",
     "cryptography>=49.0.0",
+    "matplotlib>=3.8",
 ]
 
 [dependency-groups]
