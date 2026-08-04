@@ -65,7 +65,7 @@ def candles_to_ohlc(
 
 
 def series_span(series: list[tuple[datetime, float]]) -> tuple[datetime, datetime]:
-    """First and last timestamp of a non-empty ``(time, value)`` series."""
+    """Earliest and latest timestamp of a non-empty ``(time, value)`` series."""
     if not series:
         raise ValueError("cannot take the span of an empty series")
     times = [row[0] for row in series]

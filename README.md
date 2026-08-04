@@ -125,7 +125,7 @@ src/tradetk/
   translation/          # THE CORE: signal -> probability -> edge -> sizing
   costs/                # fee models, spread + slippage
   venues/               # Venue protocol; kalshi, polymarket_us, paper
-  strategy/             # BaseStrategy + reference strategies
+  strategy/             # BaseStrategy + baseline_vol
   shadow/               # scores estimates across the full eligible universe
   risk/                 # dollar-denominated sizing gate + limits
   state/                # positions, P&L, trade log (SQLite)
