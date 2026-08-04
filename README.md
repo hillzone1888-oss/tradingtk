@@ -8,13 +8,15 @@ Data venue and execution venue are completely separate. No order ever touches th
 data layer. See `CLAUDE.md` for the operating rules — including the absolute
 `execute` boundary.
 
-## Status: build step 13 of 19 (two strategies to compare; risk layer next)
+## Status: build step 13 of 19 (`baseline_vol` strategy; risk layer next)
 
 - [x] 1. Scaffold, config schema, `.gitignore`, README, `CLAUDE.md`
 - [x] 2. `DataProvider` protocol + `HyperliquidProvider` + cache + tests
-- [x] 3. `MoonDevProvider` + typed models + `validate_provider.py`
-      — Polymarket flow family only; HL-derived signals not yet implemented
-      and deliberately not advertised in `capabilities()`
+- [x] 3. A second data provider + typed models + `validate_provider.py`
+      — built, then **removed 2026-08-04**: it exposed only a Polymarket flow
+      family, its Hyperliquid-derived signals were never implemented, and its
+      paid tier made it not worth keeping. `validate_provider.py` now
+      validates Hyperliquid only.
 - [x] 4. `Venue` protocol + `KalshiVenue` — read-only; canonical
       YES-denominated book hides Kalshi's dual-bid representation.
       No order path exists in the adapter, by design.
@@ -78,33 +80,15 @@ data layer. See `CLAUDE.md` for the operating rules — including the absolute
       The baseline is implicitly **short volatility** (realized vol < implied,
       the variance risk premium); `vol_multiplier` is the honest lever for that
       and is deliberately not fitted to backtest results.
-- [x] 13. `LiquidationSkewStrategy` + the `liquidations` signal types.
-      The baseline's lognormal with **one term added**: a log-drift set by the
-      imbalance of recent forced liquidations. Only one term changes, so step
-      10 can attribute any difference in Brier score to it and to nothing else.
-      The tilt is **capped, not fitted** — `max_drift_sigma` (default 0.25) is
-      the shift at a perfectly one-sided window, measured in the claim's *own*
-      horizon sigmas, so 0.25σ means the same thing on a 2-hour and a 20-hour
-      contract. The **sign is a declared hypothesis**, not a finding:
-      `regime: continuation | reversion` are both well-attested readings of
-      forced flow, so the parameter is recorded in the method string and
-      calibration adjudicates it — flipping it after seeing results on the same
-      tape is fitting, and is called out as such in the code.
-      It **abstains rather than falling back** to the baseline whenever the
-      evidence is missing or thin (no profile, wrong asset, stale, few events,
-      small notional, one whale holding up the imbalance, or a claim resolving
-      beyond the signal's horizon); a fallback would make its calibration score
-      the baseline's score under a different name.
-      `signals/liquidations.py` types the event and reduces a stream to one
-      window statistic, refusing — not filtering — the two inputs that produce
-      plausible wrong numbers: another asset's events, and events after `as_of`.
-      **The side convention is pinned by a test** (`long` = longs force-*sold* =
-      downward pressure): feeds disagree, the two conventions are
-      indistinguishable from the numbers, and the error would silently invert
-      every trade.
-      ⚠️ **Not runnable yet, by design.** It declares `Capability.LIQUIDATIONS`,
-      which no provider advertises (Moon Dev's HL-derived endpoints are not
-      implemented), so selecting it halts at startup instead of running on zeros.
+- [x] 13. A second strategy layering a forced-liquidation skew onto the
+      baseline — built, then **removed 2026-08-04** as permanently
+      unrunnable: it needed a liquidations capability that no provider ever
+      advertised. Hyperliquid has no usable native liquidation feed (verified
+      2026-08-03: no info type, no WS channel, no flag on the public trades
+      feed; the HLP liquidator vaults see only backstop liquidations — 0 in 7
+      days), and the only live route was a paid third-party feed that was
+      dropped along with the provider that offered it. `baseline_vol` is the
+      only strategy.
 - [ ] 14. Risk module
 - [ ] 15. Paper executor
 - [ ] 16. `propose` command + `CLAUDE.md` execute boundary
@@ -137,7 +121,7 @@ config/                 # config.example.yaml (tracked) + config.yaml (gitignore
 src/tradetk/
   enums.py              # Mode, Env, VenueName, ProviderName, Capability
   config/               # pydantic schema + loader  <-- implemented
-  signals/              # DataProvider protocol; hyperliquid + moondev
+  signals/              # DataProvider protocol; hyperliquid only
   translation/          # THE CORE: signal -> probability -> edge -> sizing
   costs/                # fee models, spread + slippage
   venues/               # Venue protocol; kalshi, polymarket_us, paper

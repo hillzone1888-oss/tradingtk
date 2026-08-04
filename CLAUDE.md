@@ -34,7 +34,7 @@
 ## Venues (do not re-litigate)
 - Execution venue: Kalshi first (CFTC-regulated, demo at `demo-api.kalshi.co`),
   Polymarket US (QCX LLC, Ed25519 keys) once credentials land.
-- Data venue is SEPARATE and read-only: Hyperliquid + Moon Dev. No orders ever
+- Data venue is SEPARATE and read-only: Hyperliquid only. No orders ever
   go there. Never build against Polymarket **Global** (geo-blocked to US persons);
   no VPN/wallet workarounds.
 - Kalshi defaults to the **demo** environment. Production requires an explicit
@@ -45,8 +45,8 @@
   exist in this project. If a step seems to need one, STOP and ask.
 - Private keys are referenced by file path, never inlined in `.env` or config.
 - Never log, print, or persist any key or signed payload, even at debug level.
-- Signal providers (Moon Dev, Hyperliquid) are strictly read-only — nothing is
-  ever signed or sent to them.
+- The signal provider (Hyperliquid) is strictly read-only — nothing is
+  ever signed or sent to it.
 
 ## Scheduled routines
 - If you are running as a routine you woke up **stateless**. Read

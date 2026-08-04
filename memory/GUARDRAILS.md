@@ -47,8 +47,6 @@ built for.
   and means nothing.
 - A routine may **recommend** a parameter change in writing, with its reasoning,
   in `memory/DECISIONS.md`. A human applies it.
-- `liquidation_skew`'s `regime` must be declared before a scoring run, never
-  chosen after seeing which direction scored better.
 
 ## Secrets
 

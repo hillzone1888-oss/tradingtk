@@ -40,8 +40,6 @@ distinction, say that instead.
 - Strategy versus **the venue's own mid** on the same contracts. This is the
   criterion. Losing to the mid means every trade would pay a spread to be more
   wrong.
-- Where `liquidation_skew` is concerned: it is not runnable (no liquidations
-  provider). Do not report a score for it. Do not "estimate" one.
 - Never pool measured-reference markets with fixed strikes; they are ~50/50 by
   construction.
 

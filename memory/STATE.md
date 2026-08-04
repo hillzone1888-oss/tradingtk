@@ -9,24 +9,6 @@ Update the fields below at the end of every run. If nothing changed, say so —
 
 ---
 
-## FIXED 2026-08-03 — sweep failed in the keyless cloud environment
-
-The first real cloud run of the sweep found two things, both now understood:
-
-1. **`record` refused to start without `MOONDEV_API_KEY`.** The command in
-   `routines/sweep.md` omitted `--no-signals`, and `record` exits 2 rather than
-   record a subset of what was asked for. That gate is correct; the spec was
-   wrong. Fixed — the sweep command now passes `--no-signals`, verified to exit
-   0 and capture 25 books with no key set. (Local verification earlier missed
-   this because the developer `.env` *has* the key.)
-2. **`git push` returned 403** — the per-routine "allow unrestricted branch
-   pushes" permission is not enabled. Web-UI setting, not fixable from code.
-   Until it is on, no sweep can persist anything.
-
-The routine behaved correctly throughout: it refused to score against an absent
-tape, only *recommended* fixes rather than applying them, and never approached
-the execute boundary.
-
 ## Build position
 
 - Build step **13 of 19** complete. Remaining: 14 risk, 15 paper executor,
@@ -39,18 +21,19 @@ the execute boundary.
 - Kalshi, **demo** environment. Market data is read from **prod** (demo has no
   strike fields and no book depth); execution targets demo. Neither path has an
   order endpoint wired.
-- Hyperliquid + Moon Dev are read-only signal sources. Nothing is ever sent to
-  them.
+- Hyperliquid is the only read-only signal source. Nothing is ever sent to it.
 
 ## Strategies
 
-- `baseline_vol` — the benchmark. Runnable.
-- `liquidation_skew` — **not runnable.** It declares `Capability.LIQUIDATIONS`,
-  which no provider advertises, so selecting it halts at startup by design.
-  Hyperliquid has no usable native liquidation feed (verified 2026-08-03: no
-  info type, no WS channel, no flag on the public trades feed; the HLP liquidator
-  vaults see only backstop liquidations — 0 in 7 days). A paid third-party feed
-  is the only live route. Do not re-investigate this.
+- `baseline_vol` — the only strategy. Runnable.
+- A second strategy layering a forced-liquidation skew onto the baseline was
+  built at build step 13, then **removed 2026-08-04** as permanently
+  unrunnable after dropping the paywalled third-party liquidations feed it
+  depended on: no provider ever advertised the liquidations capability it
+  needed. Hyperliquid has no usable native liquidation feed (verified
+  2026-08-03: no info type, no WS channel, no flag on the public trades feed;
+  the HLP liquidator vaults see only backstop liquidations — 0 in 7 days). Do
+  not re-investigate this.
 
 ## Evidence on hand
 
@@ -81,9 +64,8 @@ first poll plus today's pre-fix poll) and is not recoverable.
 
 ## Open questions for the human
 
-- Whether to pay for a liquidations feed, or leave `liquidation_skew` dormant.
 - Polymarket US KYC reportedly runs through the iOS app only — unconfirmed.
 
 ---
 
-*Last updated: 2026-08-03 — initial seed, by hand.*
+*Last updated: 2026-08-04.*

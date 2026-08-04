@@ -57,7 +57,6 @@ TELEGRAM_BOT_TOKEN     # from @BotFather
 TELEGRAM_CHAT_ID       # your chat id
 KALSHI_API_KEY_ID      # demo credentials; trading-only, never withdrawal
 KALSHI_PRIVATE_KEY     # PEM contents
-MOONDEV_API_KEY        # optional; only if signals are enabled
 ALPACA_API_KEY_ID      # paper account, held for a future equities agent —
 ALPACA_API_SECRET      #   no code reads these and no routine uses them.
 ALPACA_BASE_URL        #   See memory/DECISIONS.md for why they cannot paper-
