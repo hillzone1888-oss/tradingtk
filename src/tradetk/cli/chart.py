@@ -9,7 +9,10 @@ can actually look at the price action while designing a strategy.
 
 from __future__ import annotations
 
+import argparse
+import json
 import os
+import sys
 from datetime import datetime, timezone
 from typing import Iterable
 
@@ -17,9 +20,12 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless: never try to open a window
 import matplotlib.pyplot as plt  # noqa: E402 - must follow matplotlib.use
+import truststore  # noqa: E402 - must follow matplotlib.use
 
-from tradetk.backtest.replay import BookObservation
-from tradetk.signals.base import Candle
+from tradetk.backtest.replay import BookObservation, ReplayError, TapeReplay  # noqa: E402
+from tradetk.signals.base import Candle  # noqa: E402
+from tradetk.signals.hyperliquid import HyperliquidProvider  # noqa: E402
+from tradetk.translation.claims import UnderlyingRegistry  # noqa: E402
 
 
 def implied_prob_series(
@@ -110,3 +116,76 @@ def render_chart(
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
     return out_path
+
+
+def _provider_factory() -> HyperliquidProvider:
+    """Indirection so tests can substitute a fake candle provider."""
+    return HyperliquidProvider()
+
+
+def _default_out(ticker: str) -> str:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"data/charts/{ticker}-{stamp}.png"
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(description="Chart an underlying vs. a contract's implied odds.")
+    ap.add_argument("--ticker", required=True, help="Kalshi contract ticker to chart.")
+    ap.add_argument("--interval", default="1h", help="Hyperliquid candle interval (default 1h).")
+    ap.add_argument("--tape-dir", default="data/tape")
+    ap.add_argument("--registry", default="config/underlyings.yaml")
+    ap.add_argument("--symbol", default=None,
+                    help="Underlying symbol override; inferred from the tape's claim if omitted.")
+    ap.add_argument("--out", default=None, help="PNG path (default data/charts/<ticker>-<ts>.png).")
+    args = ap.parse_args(argv)
+
+    truststore.inject_into_ssl()
+    out_path = args.out or _default_out(args.ticker)
+
+    try:
+        replay = TapeReplay.from_tape(args.tape_dir)
+    except ReplayError as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}))
+        return 2
+
+    prob = implied_prob_series(replay.observations(), args.ticker)
+    if not prob:
+        print(json.dumps({"ok": False, "error":
+                          f"no book observations for {args.ticker!r} on the tape at "
+                          f"{args.tape_dir}; run `record` for it first"}))
+        return 2
+
+    start, end = series_span(prob)
+
+    # Underlying symbol + strike, inferred from the contract's claim unless overridden.
+    symbol = args.symbol
+    strike: float | None = None
+    claim = replay.claim_as_of(args.ticker, end, UnderlyingRegistry.from_yaml(args.registry))
+    if claim is not None:
+        symbol = symbol or getattr(claim, "underlying", None)
+        thr = getattr(claim, "threshold", None)
+        strike = float(thr) if thr is not None else None
+    if not symbol:
+        print(json.dumps({"ok": False, "error":
+                          f"could not infer underlying for {args.ticker!r}; pass --symbol"}))
+        return 2
+
+    start_ms = int(start.timestamp() * 1000) - 3_600_000  # small left pad
+    end_ms = int(end.timestamp() * 1000)
+    with _provider_factory() as provider:
+        candles = provider.candles(symbol, args.interval, start_ms, end_ms)
+    ohlc = candles_to_ohlc(candles)
+
+    render_chart(ticker=args.ticker, symbol=symbol, prob_series=prob, ohlc=ohlc,
+                 out_path=out_path, strike=strike)
+
+    print(json.dumps({
+        "ok": True, "out": out_path, "ticker": args.ticker, "symbol": symbol,
+        "prob_points": len(prob), "candles": len(candles),
+        "span": [start.isoformat(), end.isoformat()],
+    }))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

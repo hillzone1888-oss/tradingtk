@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from decimal import Decimal
 
 from tradetk.backtest.replay import BookObservation
+from tradetk.cli import chart as chart_mod
 from tradetk.cli.chart import candles_to_ohlc, implied_prob_series, render_chart, series_span
 from tradetk.signals.base import Candle
 from tradetk.venues.base import BinaryBook, BookLevel
@@ -84,3 +86,67 @@ def test_render_chart_writes_a_nonempty_png(tmp_path) -> None:
     assert result == str(out)
     assert out.exists()
     assert out.stat().st_size > 1000  # a real PNG, not an empty file
+
+
+class _FakeProvider:
+    def __enter__(self): return self
+    def __exit__(self, *exc): return None
+    def candles(self, symbol, interval, start_ms, end_ms):
+        return [_candle(start_ms, 100, 110, 95, 105), _candle(start_ms + 3_600_000, 105, 120, 104, 118)]
+
+
+def test_main_renders_and_reports(tmp_path, monkeypatch, capsys) -> None:
+    ticker = "KXBTCD-A"
+    obs = [_obs(ticker, 0, "0.40", "0.42"), _obs(ticker, 30, "0.44", "0.46")]
+
+    class _Replay:
+        @classmethod
+        def from_tape(cls, tape_dir): return cls()
+        def observations(self): return iter(obs)
+        @property
+        def tickers(self): return {ticker}
+        @property
+        def span(self):
+            return obs[0].observed_at, obs[-1].observed_at
+        def claim_as_of(self, tk, when, registry):
+            class _C:
+                underlying = "BTC"
+                threshold = Decimal("112")
+            return _C()
+
+    monkeypatch.setattr(chart_mod, "TapeReplay", _Replay)
+    monkeypatch.setattr(chart_mod, "UnderlyingRegistry",
+                        type("R", (), {"from_yaml": staticmethod(lambda p: object())}))
+    monkeypatch.setattr(chart_mod, "_provider_factory", lambda: _FakeProvider())
+
+    out = tmp_path / "out.png"
+    rc = chart_mod.main(["--ticker", ticker, "--out", str(out), "--tape-dir", "unused",
+                         "--registry", "unused"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["symbol"] == "BTC"
+    assert payload["prob_points"] == 2
+    assert payload["candles"] == 2
+    assert out.exists() and out.stat().st_size > 1000
+
+
+def test_main_errors_when_ticker_absent_from_tape(tmp_path, monkeypatch, capsys) -> None:
+    class _Empty:
+        @classmethod
+        def from_tape(cls, tape_dir): return cls()
+        def observations(self): return iter([])
+        @property
+        def tickers(self): return set()
+        @property
+        def span(self):
+            raise IndexError
+        def claim_as_of(self, tk, when, registry): return None
+
+    monkeypatch.setattr(chart_mod, "TapeReplay", _Empty)
+    monkeypatch.setattr(chart_mod, "UnderlyingRegistry",
+                        type("R", (), {"from_yaml": staticmethod(lambda p: object())}))
+    rc = chart_mod.main(["--ticker", "KXBTCD-A", "--out", str(tmp_path / "x.png"),
+                         "--tape-dir", "unused", "--registry", "unused", "--symbol", "BTC"])
+    assert rc == 2
+    assert json.loads(capsys.readouterr().out)["ok"] is False
