@@ -9,6 +9,24 @@ Update the fields below at the end of every run. If nothing changed, say so —
 
 ---
 
+## FIXED 2026-08-03 — sweep failed in the keyless cloud environment
+
+The first real cloud run of the sweep found two things, both now understood:
+
+1. **`record` refused to start without `MOONDEV_API_KEY`.** The command in
+   `routines/sweep.md` omitted `--no-signals`, and `record` exits 2 rather than
+   record a subset of what was asked for. That gate is correct; the spec was
+   wrong. Fixed — the sweep command now passes `--no-signals`, verified to exit
+   0 and capture 25 books with no key set. (Local verification earlier missed
+   this because the developer `.env` *has* the key.)
+2. **`git push` returned 403** — the per-routine "allow unrestricted branch
+   pushes" permission is not enabled. Web-UI setting, not fixable from code.
+   Until it is on, no sweep can persist anything.
+
+The routine behaved correctly throughout: it refused to score against an absent
+tape, only *recommended* fixes rather than applying them, and never approached
+the execute boundary.
+
 ## Build position
 
 - Build step **13 of 19** complete. Remaining: 14 risk, 15 paper executor,
