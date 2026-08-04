@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from tradetk.backtest.replay import BookObservation
-from tradetk.cli.chart import candles_to_ohlc, implied_prob_series, series_span
+from tradetk.cli.chart import candles_to_ohlc, implied_prob_series, render_chart, series_span
 from tradetk.signals.base import Candle
 from tradetk.venues.base import BinaryBook, BookLevel
 
@@ -69,3 +69,18 @@ def test_series_span_returns_first_and_last() -> None:
     ]
     start, end = series_span(s)
     assert start.hour == 12 and end.hour == 13
+
+
+def test_render_chart_writes_a_nonempty_png(tmp_path) -> None:
+    t0 = datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc)
+    t1 = datetime(2026, 8, 4, 13, 0, tzinfo=timezone.utc)
+    prob = [(t0, 0.41), (t1, 0.45)]
+    ohlc = ([t0, t1], [100.0, 105.0], [110.0, 120.0], [95.0, 104.0], [105.0, 118.0])
+    out = tmp_path / "chart.png"
+    result = render_chart(
+        ticker="KXBTCD-A", symbol="BTC", prob_series=prob, ohlc=ohlc,
+        out_path=str(out), strike=112.0,
+    )
+    assert result == str(out)
+    assert out.exists()
+    assert out.stat().st_size > 1000  # a real PNG, not an empty file
