@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from tradetk.backtest.replay import BookObservation
-from tradetk.cli.chart import implied_prob_series
+from tradetk.cli.chart import candles_to_ohlc, implied_prob_series, series_span
+from tradetk.signals.base import Candle
 from tradetk.venues.base import BinaryBook, BookLevel
 
 
@@ -39,3 +40,32 @@ def test_implied_prob_series_skips_one_sided_books() -> None:
     ]
     series = implied_prob_series(obs, "KXBTCD-A")
     assert [round(p, 2) for _, p in series] == [0.45]
+
+
+def _candle(open_ms: int, o: float, h: float, l: float, c: float) -> Candle:  # noqa: E741
+    return Candle(
+        symbol="BTC", interval="1h", open_ms=open_ms, close_ms=open_ms + 3_600_000,
+        o=o, h=h, l=l, c=c, v=1.0, trades=1,
+    )
+
+
+def test_candles_to_ohlc_orders_and_converts() -> None:
+    times, o, h, l, c = candles_to_ohlc([  # noqa: E741
+        _candle(1_000_000, 100, 110, 95, 105),
+        _candle(4_600_000, 105, 120, 104, 118),
+    ])
+    assert [t.tzinfo is not None for t in times] == [True, True]
+    assert times[0] < times[1]
+    assert o == [100.0, 105.0]
+    assert h == [110.0, 120.0]
+    assert l == [95.0, 104.0]
+    assert c == [105.0, 118.0]
+
+
+def test_series_span_returns_first_and_last() -> None:
+    s = [
+        (datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc), 0.4),
+        (datetime(2026, 8, 4, 13, 0, tzinfo=timezone.utc), 0.5),
+    ]
+    start, end = series_span(s)
+    assert start.hour == 12 and end.hour == 13
