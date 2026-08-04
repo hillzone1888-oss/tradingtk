@@ -80,5 +80,5 @@ def test_require_capabilities_passes_when_covered() -> None:
 
 def test_require_capabilities_fails_loudly_on_missing() -> None:
     p = _FakeProvider({Capability.SPOT_PRICE})
-    with pytest.raises(CapabilityError, match="liquidations"):
-        require_capabilities(p, {Capability.SPOT_PRICE, Capability.LIQUIDATIONS})
+    with pytest.raises(CapabilityError, match="funding"):
+        require_capabilities(p, {Capability.SPOT_PRICE, Capability.FUNDING})

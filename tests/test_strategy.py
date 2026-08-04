@@ -127,7 +127,7 @@ def test_baseline_declares_the_capabilities_it_actually_uses() -> None:
     caps = BaselineVolStrategy().required_capabilities()
     assert Capability.REALIZED_VOL in caps
     assert Capability.SPOT_PRICE in caps
-    assert Capability.LIQUIDATIONS not in caps
+    assert caps == {Capability.REALIZED_VOL, Capability.SPOT_PRICE, Capability.CANDLES}
 
 
 def test_run_strategy_turns_one_bad_market_into_an_abstention() -> None:

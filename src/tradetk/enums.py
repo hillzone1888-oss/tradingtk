@@ -32,7 +32,6 @@ class Env(str, Enum):
 
 class ProviderName(str, Enum):
     hyperliquid = "hyperliquid"  # native; default + fallback
-    moondev = "moondev"  # opt-in; paid tier exceeds a $20 book
 
 
 class Capability(str, Enum):
@@ -50,10 +49,3 @@ class Capability(str, Enum):
     ORDERBOOK = "orderbook"
     FUNDING = "funding"
     REALIZED_VOL = "realized_vol"
-    # ── Moon Dev-only signals (no native equivalent) ──
-    LIQUIDATIONS = "liquidations"
-    HLP_SENTIMENT = "hlp_sentiment"
-    POSITION_SNAPSHOTS = "position_snapshots"
-    SMART_MONEY = "smart_money"
-    ORDER_FLOW = "order_flow"
-    POLY_WHALES = "poly_whales"  # Polymarket GLOBAL flow — external signal only

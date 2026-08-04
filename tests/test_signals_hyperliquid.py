@@ -92,5 +92,11 @@ def test_provider_capabilities(hl_payloads) -> None:
 
     with _provider(hl_payloads) as p:
         caps = p.capabilities()
-        assert Capability.ORDERBOOK in caps
-        assert Capability.LIQUIDATIONS not in caps  # Moon Dev-only
+        assert caps == {
+            Capability.SPOT_PRICE,
+            Capability.PERP_PRICE,
+            Capability.CANDLES,
+            Capability.ORDERBOOK,
+            Capability.FUNDING,
+            Capability.REALIZED_VOL,
+        }

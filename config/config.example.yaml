@@ -44,12 +44,9 @@ venue:
   use_production: false            # prod requires this = true (belt & braces)
 
 provider:
-  primary: hyperliquid             # native HL is default + fallback
-  moondev_enabled: false           # opt-in; paid tier > $20 book
-  moondev_tier: standard           # standard | qe  (retention/row caps differ)
+  primary: hyperliquid             # native HL is default + fallback (read-only)
   capabilities:
     hyperliquid: [spot_price, perp_price, candles, orderbook, funding, realized_vol]
-    moondev:     [liquidations, hlp_sentiment, poly_whales, smart_money, order_flow]
 
 fees:
   # Fallback multipliers ONLY — verified against the live schedule at startup.
@@ -60,21 +57,8 @@ fees:
     roundup_to_cent: true
 
 strategy:
-  name: baseline_vol               # baseline_vol | liquidation_skew
+  name: baseline_vol               # baseline_vol
   realized_vol_lookback_days: 30
-  # liquidation_skew only. Selecting it HALTS at startup until a provider
-  # advertises the `liquidations` capability — by design, not a bug.
-  # params:
-  #   regime: continuation         # continuation | reversion — a HYPOTHESIS under
-  #                                # test, declared before the run. Flipping it
-  #                                # after seeing results on the same tape is fitting.
-  #   window_minutes: 60           # must match the window the profile was built with
-  #   max_drift_sigma: 0.25        # tilt at a perfectly one-sided window, in horizon sigmas
-  #   vol_bump: 1.0                # 1.0 = make no claim about cascade vol
-  #   min_events: 10               # evidence gates: per-underlying, set them deliberately
-  #   min_notional_usd: 250000
-  #   max_concentration: 0.5       # above this it is one margin call, not a cascade
-  #   max_horizon_hours: 24        # beyond this the claim is not about this flow
 
 recorder:
   snapshot_interval_seconds: 60    # orderbook + derived-signal polling cadence

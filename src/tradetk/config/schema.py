@@ -127,8 +127,6 @@ class FeesConfig(_Strict):
 
 class ProviderConfig(_Strict):
     primary: ProviderName = ProviderName.hyperliquid
-    moondev_enabled: bool = False
-    moondev_tier: str = Field(default="standard", pattern="^(standard|qe)$")
     capabilities: dict[ProviderName, set[Capability]] = Field(
         description="Which capabilities each provider is allowed to supply."
     )

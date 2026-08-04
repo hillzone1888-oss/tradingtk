@@ -4,12 +4,12 @@ Every capability here is available as a single poll (``--once``, the default) as
 well as inside the loop (``--daemon``), because no capability may exist only in a
 long-running process. Output is JSON on stdout; ``--pretty`` indents it.
 
-Run this early and keep it running. The Moon Dev whale log reaches back only as
-far as its row cap allows (~4 hours on a standard key), so any history beyond
-that has to be accumulated by polling and cannot be recovered afterwards.
+Records Kalshi orderbook + market metadata snapshots for eligible crypto
+markets (``--books``). Any history beyond the recorded window has to be
+accumulated by polling and cannot be recovered afterwards.
 
-    uv run python -m tradetk.cli.record --once --pretty
-    uv run python -m tradetk.cli.record --daemon --interval 900
+    uv run python -m tradetk.cli.record --once --books --pretty
+    uv run python -m tradetk.cli.record --daemon --books --interval 900
 
 Stop a daemon with Ctrl-C, or by creating a ``KILL`` file in the project root.
 """
@@ -19,7 +19,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import signal
 import sys
 import time
@@ -31,7 +30,6 @@ from typing import Any
 import truststore
 from dotenv import load_dotenv
 
-from tradetk.signals.moondev import TIER_CAPS, MoonDevProvider
 from tradetk.signals.recorder import TapeSource, TapeWriter, poll_source
 from tradetk.venues.books import (
     book_source,
@@ -44,46 +42,6 @@ from tradetk.venues.kalshi import KalshiVenue
 log = logging.getLogger("tradetk.cli.record")
 
 KILL_FILE = "KILL"
-
-# endpoint -> (event-timestamp field, tier-cap key). Sources without an event
-# timestamp are point-in-time aggregates: still worth recording, but gap
-# detection does not apply to them.
-MOONDEV_SOURCES: dict[str, tuple[str | None, str | None]] = {
-    "/api/poly/whales": ("ts", "whales"),
-    "/api/poly/whales/daily": (None, None),
-    "/api/poly/whales/top-traders": (None, "leaderboard"),
-    "/api/poly/whales/top-markets": (None, "leaderboard"),
-    "/api/poly/profitable-traders": (None, "profitable_traders"),
-}
-
-
-def build_moondev_sources(
-    provider: MoonDevProvider, tier: str, selected: list[str] | None
-) -> list[TapeSource]:
-    """Wrap the Moon Dev endpoints as pollable tape sources."""
-    sources: list[TapeSource] = []
-    for endpoint, (ts_field, cap_key) in MOONDEV_SOURCES.items():
-        if selected and not any(s in endpoint for s in selected):
-            continue
-        cap = TIER_CAPS[tier][cap_key] if cap_key else None
-        params: dict[str, Any] = {}
-        if cap_key == "whales":
-            # Ask for the full cap every poll: overlap with the previous poll is
-            # what proves continuity, and unused rows are free.
-            params = {"limit": cap, "min_usd": 1000}
-        elif cap:
-            params = {"limit": cap}
-
-        sources.append(
-            TapeSource(
-                name=endpoint.rsplit("/", 1)[-1],
-                endpoint=endpoint,
-                fetch=lambda e=endpoint, p=params: provider.fetch_raw(e, p),
-                event_ts_field=ts_field,
-                row_cap=cap,
-            )
-        )
-    return sources
 
 
 def build_book_sources(
@@ -169,9 +127,9 @@ def next_interval(
 ) -> tuple[float, str]:
     """Choose the next sleep, preferring the measured-density suggestion.
 
-    Whale density swings by more than an order of magnitude, so a fixed interval
-    that is safe at rest opens gaps during a burst. Never polls faster than
-    `floor` (rate-limit courtesy) and never slower than configured.
+    Market activity swings by more than an order of magnitude, so a fixed
+    interval that is safe at rest opens gaps during a burst. Never polls faster
+    than `floor` (rate-limit courtesy) and never slower than configured.
     """
     if not adaptive or suggested is None:
         return configured, "configured"
@@ -198,13 +156,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--min-interval", type=float, default=60.0,
                     help="Never poll faster than this, whatever density suggests (default 60).")
     ap.add_argument("--tape-dir", default="data/tape")
-    ap.add_argument("--tier", default="standard", choices=sorted(TIER_CAPS))
-    ap.add_argument("--source", action="append",
-                    help="Substring of an endpoint to record; repeatable. Default: all.")
     ap.add_argument("--books", action="store_true",
-                    help="Also snapshot Kalshi orderbooks for eligible crypto markets.")
-    ap.add_argument("--no-signals", action="store_true",
-                    help="Skip the Moon Dev sources (record books only).")
+                    help="Snapshot Kalshi orderbooks for eligible crypto markets.")
     ap.add_argument("--market-data-env", default="prod", choices=sorted(("demo", "prod")),
                     help="Environment to READ market data from. Demo has no strike data and "
                          "no depth, so prod is the default; execution is unaffected and this "
@@ -226,21 +179,9 @@ def main(argv: list[str]) -> int:
     writer = TapeWriter(args.tape_dir)
     indent = 2 if args.pretty else None
 
-    want_signals = not args.no_signals
-    key = os.environ.get("MOONDEV_API_KEY")
-    if want_signals and not key:
-        print(json.dumps({"ok": False,
-                          "error": "MOONDEV_API_KEY is not set; pass --no-signals to record "
-                                   "books only."}, indent=indent))
-        return 2
-
     with ExitStack() as stack:
         sources: list[TapeSource] = []
         discovery: dict[str, Any] = {}
-
-        if want_signals:
-            provider = stack.enter_context(MoonDevProvider(api_key=key, tier=args.tier))
-            sources += build_moondev_sources(provider, args.tier, args.source)
 
         if args.books:
             # Read-only market data. The adapter has no order endpoint, so this
