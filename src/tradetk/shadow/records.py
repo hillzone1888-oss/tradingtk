@@ -90,6 +90,10 @@ class ShadowRecord(BaseModel):
     net_edge_pp: Decimal | None = None
     failures: tuple[str, ...] = ()
 
+    # What the vault overlay WOULD have done. Recorded, never applied:
+    # filtering here would measure the model on the stances' own selection.
+    overlay: dict | None = None
+
     def to_claim(self) -> Claim:
         """Rebuild the claim so settlement uses `Claim.resolves_yes`.
 

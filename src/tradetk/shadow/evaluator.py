@@ -81,6 +81,7 @@ class ShadowEvaluator:
         gate_limits: GateLimits,
         sizing_limits: SizingLimits,
         vol_lookback_days: int = 30,
+        overlay: Any | None = None,
     ) -> None:
         self.strategy = strategy
         self.registry = registry
@@ -89,6 +90,7 @@ class ShadowEvaluator:
         self.gate_limits = gate_limits
         self.sizing_limits = sizing_limits
         self.vol_lookback_days = vol_lookback_days
+        self.overlay = overlay
 
     def _contracts_for(self, book: BinaryBook) -> int:
         """Size a nominal position purely so the gate verdict is realistic.
@@ -144,6 +146,11 @@ class ShadowEvaluator:
                 (assessment.yes, assessment.no), key=lambda a: a.net_edge_pp
             )
 
+            overlay_note = None
+            if self.overlay is not None:
+                policy = self.overlay.for_underlying(claim.underlying, now)
+                overlay_note = policy.as_dict()
+
             records.append(
                 ShadowRecord(
                     observed_at=now,
@@ -174,6 +181,7 @@ class ShadowEvaluator:
                     chosen_side=chosen.side.value if chosen else None,
                     net_edge_pp=reference.net_edge_pp,
                     failures=tuple(f.gate.value for f in reference.failures),
+                    overlay=overlay_note,
                 )
             )
 

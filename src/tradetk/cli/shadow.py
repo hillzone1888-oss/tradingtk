@@ -47,6 +47,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--tape-dir", default="data/tape")
     ap.add_argument("--shadow-dir", default="data/shadow")
     ap.add_argument("--registry", default="config/underlyings.yaml")
+    ap.add_argument("--config", default="config/config.yaml",
+                    help="Toolkit config; read only for the vault_overlay block.")
     ap.add_argument(
         "--strategy", default="baseline_vol",
         help=f"One of: {', '.join(available_strategies()) or '(none)'}",
@@ -103,26 +105,50 @@ def main(argv: list[str]) -> int:
             lookback_days=args.vol_lookback_days,
         )
 
+    from tradetk.config.schema import VaultOverlayConfig
+    from tradetk.overlay.loader import load_overlay
+    from tradetk.overlay.verifiers import build_registry
+
+    gate = GateLimits(
+        min_net_edge_pp=Decimal(str(args.min_edge_pp)),
+        margin_pp=Decimal(str(args.margin_pp)),
+        min_book_depth_multiple=Decimal(str(args.min_depth_multiple)),
+        max_book_participation_pct=Decimal(str(args.max_participation_pct)),
+        max_hours_to_resolution=Decimal(str(args.max_hours)),
+        reject_deep_tail=not args.allow_deep_tail,
+    )
+    sizing = SizingLimits(
+        position_target=Decimal(args.position_target),
+        per_position_ceiling=Decimal(args.per_position_ceiling),
+        total_capital=Decimal(args.total_capital),
+        max_book_participation_pct=Decimal(str(args.max_participation_pct)),
+    )
+    try:
+        from tradetk.config.loader import load_config
+
+        vault_cfg = load_config(args.config).vault_overlay
+    except Exception as exc:  # noqa: BLE001 - a broken config must not stop shadow
+        logging.getLogger("tradetk.cli.shadow").info(
+            "vault_overlay config unavailable (%s); overlay off", exc
+        )
+        vault_cfg = VaultOverlayConfig()
+    overlay = load_overlay(
+        vault_cfg, base_gate=gate, base_sizing=sizing,
+        registry=build_registry(), as_of=start, now=start,
+    )
+    if not overlay.ok:
+        print(f"warning: vault overlay unavailable, annotations off: "
+              f"{overlay.error}", file=sys.stderr)
+
     evaluator = ShadowEvaluator(
         strategy=get_strategy(args.strategy, vol_multiplier=args.vol_multiplier),
         registry=registry,
         data=data,
         fee_model=KalshiFeeModel(rounding=FeeRounding(args.rounding)),
-        gate_limits=GateLimits(
-            min_net_edge_pp=Decimal(str(args.min_edge_pp)),
-            margin_pp=Decimal(str(args.margin_pp)),
-            min_book_depth_multiple=Decimal(str(args.min_depth_multiple)),
-            max_book_participation_pct=Decimal(str(args.max_participation_pct)),
-            max_hours_to_resolution=Decimal(str(args.max_hours)),
-            reject_deep_tail=not args.allow_deep_tail,
-        ),
-        sizing_limits=SizingLimits(
-            position_target=Decimal(args.position_target),
-            per_position_ceiling=Decimal(args.per_position_ceiling),
-            total_capital=Decimal(args.total_capital),
-            max_book_participation_pct=Decimal(str(args.max_participation_pct)),
-        ),
+        gate_limits=gate,
+        sizing_limits=sizing,
         vol_lookback_days=args.vol_lookback_days,
+        overlay=overlay,
     )
     run = evaluator.run(replay)
 
@@ -132,6 +158,8 @@ def main(argv: list[str]) -> int:
     else:
         payload["write"] = store.append(run.records)
         payload["log"] = store.summary()
+
+    payload["vault_overlay"] = overlay.as_dict()
 
     print(json.dumps(payload, indent=indent, default=str))
     return 0
