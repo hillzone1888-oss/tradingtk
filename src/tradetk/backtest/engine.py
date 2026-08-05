@@ -334,6 +334,7 @@ class BacktestEngine:
         max_slots_per_underlying: int = 2,
         vol_lookback_days: int = 30,
         recorded_results: RecordedStatusSettlement | None = None,
+        overlay: Any | None = None,
     ) -> None:
         self.strategy = strategy
         self.registry = registry
@@ -346,6 +347,7 @@ class BacktestEngine:
         self.max_slots_per_underlying = max_slots_per_underlying
         self.vol_lookback_days = vol_lookback_days
         self.recorded_results = recorded_results
+        self.overlay = overlay
 
         self._skipped: Counter[str] = Counter()
 
@@ -361,16 +363,37 @@ class BacktestEngine:
         prices, and the contract count depends on the price. So each side is
         sized against its own book, then gated at that size — never sized at one
         price and gated at another.
+
+        When a vault overlay is present, its verdict is resolved once for this
+        claim and then *narrows* the loop: a blocked underlying assesses no
+        side, a bias forbids the side that contradicts it, risk shrinks the
+        sizing target, and a catalyst raises the gate. With no overlay every
+        value below is exactly the global limit, so the behaviour is unchanged.
         """
+        gate_limits = self.gate_limits
+        sizing_limits = self.sizing_limits
+        allowed: tuple[Side, ...] | None = None
+        if self.overlay is not None:
+            policy = self.overlay.for_underlying(claim.underlying, when)
+            if policy.blocked:
+                self._skipped["overlay_blocked"] += 1
+                return None, "none"
+            gate_limits = policy.gate_limits
+            sizing_limits = policy.sizing_limits
+            allowed = policy.allowed_sides(claim)
+
         best: EdgeAssessment | None = None
         best_cap = "none"
         for side in (Side.yes, Side.no):
+            if allowed is not None and side not in allowed:
+                self._skipped["overlay_side_forbidden"] += 1
+                continue
             price = book.best_yes_ask if side is Side.yes else book.best_no_ask
             if price is None:
                 continue
             depth = side_depth(book, side)
             plan = plan_size(
-                price, self.fee_model, self.sizing_limits,
+                price, self.fee_model, sizing_limits,
                 book_depth=depth, capital_in_use=capital_in_use,
             )
             if not plan.tradeable:
@@ -378,7 +401,7 @@ class BacktestEngine:
                 continue
             assessment = assess_side(
                 claim, opinion_estimate, book, side=side, contracts=plan.contracts,
-                fee_model=self.fee_model, limits=self.gate_limits, now=when,
+                fee_model=self.fee_model, limits=gate_limits, now=when,
             )
             if not assessment.passed:
                 for failure in assessment.failures:

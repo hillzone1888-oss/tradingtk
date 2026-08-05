@@ -84,6 +84,8 @@ def main(argv: list[str]) -> int:
     )
     ap.add_argument("--tape-dir", default="data/tape")
     ap.add_argument("--registry", default="config/underlyings.yaml")
+    ap.add_argument("--config", default="config/config.yaml",
+                    help="Toolkit config; read only for the vault_overlay block.")
     ap.add_argument(
         "--strategy", default="baseline_vol",
         help=f"One of: {', '.join(available_strategies()) or '(none)'}",
@@ -173,6 +175,28 @@ def main(argv: list[str]) -> int:
         reject_deep_tail=not args.allow_deep_tail,
     )
 
+    from tradetk.config.schema import VaultOverlayConfig
+    from tradetk.overlay.loader import load_overlay
+    from tradetk.overlay.verifiers import build_registry
+
+    try:
+        from tradetk.config.loader import load_config
+
+        vault_cfg = load_config(args.config).vault_overlay
+    except Exception as exc:  # noqa: BLE001 - a broken config must not stop a backtest
+        logging.getLogger("tradetk.cli.backtest").info(
+            "vault_overlay config unavailable (%s); overlay off", exc
+        )
+        vault_cfg = VaultOverlayConfig()
+
+    overlay = load_overlay(
+        vault_cfg, base_gate=gate, base_sizing=sizing,
+        registry=build_registry(), as_of=start, now=start,
+    )
+    if not overlay.ok:
+        print(f"warning: vault overlay unavailable, backtest unmodified: "
+              f"{overlay.error}", file=sys.stderr)
+
     strategy = get_strategy(args.strategy, vol_multiplier=args.vol_multiplier)
     engine = BacktestEngine(
         strategy=strategy,
@@ -185,6 +209,7 @@ def main(argv: list[str]) -> int:
         max_positions=args.max_positions,
         max_slots_per_underlying=args.max_per_underlying,
         vol_lookback_days=args.vol_lookback_days,
+        overlay=overlay,
     )
     result = engine.run(replay)
 
@@ -195,7 +220,9 @@ def main(argv: list[str]) -> int:
         print(f"report written to {Path(path).resolve()}", file=sys.stderr)
 
     if args.json:
-        print(json.dumps(result.as_dict(), indent=2 if args.pretty else None, default=str))
+        payload = result.as_dict()
+        payload["vault_overlay"] = overlay.as_dict()
+        print(json.dumps(payload, indent=2 if args.pretty else None, default=str))
     else:
         render_backtest(result, Console())
     return 0
