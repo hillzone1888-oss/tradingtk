@@ -54,6 +54,7 @@ def build_registry(provider_factory: Any | None = None) -> VerifierRegistry:
         # codebase current spot is the close of the most recently *closed*
         # candle (see CandleSeries.spot_at), so reproduce that convention here
         # with a short recent window.
+        # Tolerance param: params["tolerance_pct"] — percent, default DEFAULT_TOLERANCE_PCT.
         end = datetime.now(timezone.utc)
         start = end - timedelta(hours=3)
         with factory() as p:
@@ -68,6 +69,7 @@ def build_registry(provider_factory: Any | None = None) -> VerifierRegistry:
         return _within(actual, value, params.get("tolerance_pct", DEFAULT_TOLERANCE_PCT))
 
     def realized_vol(params: dict, value: float) -> bool:
+        # Tolerance param: params["tolerance_pct"] — percent, default 10.0.
         with factory() as p:
             rv = p.realized_vol(params["symbol"], int(params.get("lookback_days", 30)))
         return _within(
@@ -75,6 +77,8 @@ def build_registry(provider_factory: Any | None = None) -> VerifierRegistry:
         )
 
     def price_change_pct(params: dict, value: float) -> bool:
+        # Tolerance param: params["tolerance_pp"] — percentage POINTS (not
+        # percent-of-actual like the others), default 1.0.
         hours = float(params.get("hours", 24))
         end = datetime.now(timezone.utc)
         start = end - timedelta(hours=hours)
@@ -93,6 +97,8 @@ def build_registry(provider_factory: Any | None = None) -> VerifierRegistry:
         return abs(actual - value) <= float(params.get("tolerance_pp", 1.0))
 
     def funding(params: dict, value: float) -> bool:
+        # Tolerance param: params["tolerance"] — absolute funding-rate units
+        # (not percent, not pp), default 0.0001.
         end = datetime.now(timezone.utc)
         start = end - timedelta(hours=float(params.get("hours", 8)))
         with factory() as p:
