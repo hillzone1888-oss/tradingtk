@@ -82,13 +82,20 @@ The single object the rest of the system consults:
 @dataclass(frozen=True)
 class UnderlyingPolicy:
     underlying: str
-    allowed_sides: tuple[Side, ...]     # both when there is no stance
+    bias: Bias | None                   # None when there is no stance
     sizing_limits: SizingLimits         # target scaled by effective risk
     gate_limits: GateLimits             # margin raised inside a catalyst window
     blocked: bool                       # risk 0, or a blocking catalyst
     reasons: tuple[str, ...]            # every mail id that moved a number
     source_mail: tuple[str, ...]
+
+    def allowed_sides(self, claim: Claim) -> tuple[Side, ...]:
+        """Sides permitted for one specific claim."""
 ```
+
+`allowed_sides` is a **method taking a claim**, not a stored tuple. It cannot be
+resolved at the underlying level, because which `Side` expresses a bullish view
+depends on the claim's operator — see below.
 
 `VaultOverlay.for_underlying(symbol, now)` returns one. With no mail for that
 symbol it returns the global limits unchanged and `blocked=False` — the identity
