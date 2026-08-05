@@ -128,9 +128,7 @@ def main(argv: list[str]) -> int:
 
         vault_cfg = load_config(args.config).vault_overlay
     except Exception as exc:  # noqa: BLE001 - a broken config must not stop shadow
-        logging.getLogger("tradetk.cli.shadow").info(
-            "vault_overlay config unavailable (%s); overlay off", exc
-        )
+        log.info("vault_overlay config unavailable (%s); overlay off", exc)
         vault_cfg = VaultOverlayConfig()
     overlay = load_overlay(
         vault_cfg, base_gate=gate, base_sizing=sizing,

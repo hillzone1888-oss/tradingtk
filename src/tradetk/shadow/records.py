@@ -49,6 +49,7 @@ SHADOW_COLUMNS = [
     "resolution_source", "rules_primary",
     "z_score", "deep_tail", "spot", "sigma_annual",
     "gate_decision", "chosen_side", "net_edge_pp", "failures",
+    "overlay",
 ]
 
 
@@ -149,6 +150,9 @@ class ShadowRecord(BaseModel):
             "chosen_side": self.chosen_side,
             "net_edge_pp": float(self.net_edge_pp) if self.net_edge_pp is not None else None,
             "failures": json.dumps(list(self.failures)),
+            # Serialized as JSON so the whole verdict survives the parquet round
+            # trip as one column, instead of exploding into schema-fragile fields.
+            "overlay": json.dumps(self.overlay) if self.overlay is not None else None,
         }
 
     @classmethod
@@ -162,6 +166,11 @@ class ShadowRecord(BaseModel):
 
         raw_failures = row.get("failures")
         failures = tuple(json.loads(raw_failures)) if isinstance(raw_failures, str) else ()
+
+        # A missing column reads back as NaN or None; only a stored string is a
+        # real annotation. The isinstance guard tolerates both absences.
+        raw_overlay = row.get("overlay")
+        overlay = json.loads(raw_overlay) if isinstance(raw_overlay, str) else None
 
         return cls(
             observed_at=when(row["observed_at"]),
@@ -197,6 +206,7 @@ class ShadowRecord(BaseModel):
             ),
             net_edge_pp=dec(row.get("net_edge_pp")),
             failures=failures,
+            overlay=overlay,
         )
 
 
