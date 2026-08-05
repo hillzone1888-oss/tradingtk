@@ -17,6 +17,9 @@
   belongs in a tested function.
 - If asked to "just tune it until the backtest looks good," refuse and
   explain overfitting.
+- Vault stances may restrict the side, shrink the size, or demand more edge.
+  They may never change a probability, and they may never permit a trade the
+  pipeline would otherwise refuse.
 
 ## Capital
 - $20 TOTAL book. ~$2 positions. 5-8 slots. Enforced in code, not vibes.

@@ -62,10 +62,23 @@ Verified after the fix: `written: 50`, observations scored 111 → 161, distinct
 contracts 25 → 52. The residual `no_parseable_claim: 50` is historical (July's
 first poll plus today's pre-fix poll) and is not recoverable.
 
+## Vault overlay
+
+- Landed 2026-08-04. Off by default (`vault_overlay.enabled: false` in
+  `config.yaml`); every existing output is byte-identical with it off.
+  Approved Second-Brain stances/catalysts, via `vault-post`, can only narrow
+  what the pipeline proposes — restrict the side, shrink the size, or demand
+  more edge — never permit a trade the pipeline would otherwise refuse.
+  `shadow` and `backtest` both wire it; `shadow` records the verdict but never
+  filters on it. `record` now captures a vault snapshot each poll when
+  enabled, so backtests can ask "what did my stances say then" instead of
+  reading views written after the fact. A snapshot failure is logged and
+  swallowed — the market tape must never be lost to a dead vault.
+
 ## Open questions for the human
 
 - Polymarket US KYC reportedly runs through the iOS app only — unconfirmed.
 
 ---
 
-*Last updated: 2026-08-04.*
+*Last updated: 2026-08-05.*

@@ -44,6 +44,45 @@ log = logging.getLogger("tradetk.cli.record")
 KILL_FILE = "KILL"
 
 
+def _vault_overlay_cfg(path: str) -> Any:
+    """The vault_overlay block, or a disabled default if config is absent.
+
+    The recorder's job is the market tape; a missing or invalid config must
+    never stop it, so any failure degrades to the off-by-default block.
+    """
+    from tradetk.config.schema import VaultOverlayConfig
+
+    try:
+        from tradetk.config.loader import load_config
+
+        return load_config(path).vault_overlay
+    except Exception as exc:  # noqa: BLE001 - config trouble must not stop the tape
+        log.info("vault_overlay config unavailable (%s); overlay off", exc)
+        return VaultOverlayConfig()
+
+
+def capture_vault_snapshot(vault_cfg: Any, now: datetime) -> str | None:
+    """Record what the mailbox said, so backtests can ask 'as of when'.
+
+    A backtest that read live stances while replaying the past would price it
+    with views written afterwards. Snapshots are what make the as-of query
+    honest, and they only exist if something captures them on a schedule.
+
+    A failure here is logged and swallowed: the market tape is the thing that
+    cannot be reconstructed later, and a dead vault must never cost us that.
+    """
+    if not getattr(vault_cfg, "enabled", False):
+        return None
+    try:
+        from vaultpost import VaultPost, VaultPostConfig, VerifierRegistry
+
+        cfg = VaultPostConfig.from_yaml(vault_cfg.config_path)
+        return str(VaultPost(cfg, VerifierRegistry()).capture_snapshot(now))
+    except Exception as exc:  # noqa: BLE001 - never lose the market tape
+        log.warning("vault snapshot skipped: %s", exc)
+        return None
+
+
 def build_book_sources(
     venue: KalshiVenue, *, max_hours: float, depth: int, max_markets: int
 ) -> tuple[list[TapeSource], dict[str, Any]]:
@@ -156,6 +195,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--min-interval", type=float, default=60.0,
                     help="Never poll faster than this, whatever density suggests (default 60).")
     ap.add_argument("--tape-dir", default="data/tape")
+    ap.add_argument("--config", default="config/config.yaml",
+                    help="Toolkit config; read only for the vault_overlay block.")
     ap.add_argument("--market-data-env", default="prod", choices=sorted(("demo", "prod")),
                     help="Environment to READ market data from. Demo has no strike data and "
                          "no depth, so prod is the default; execution is unaffected and this "
@@ -167,6 +208,7 @@ def main(argv: list[str]) -> int:
                     help="Cap markets snapshotted per poll, deepest first.")
     ap.add_argument("--pretty", action="store_true")
     args = ap.parse_args(argv)
+    vault_cfg = _vault_overlay_cfg(args.config)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s",
                         stream=sys.stderr)
@@ -196,6 +238,9 @@ def main(argv: list[str]) -> int:
 
         if not args.daemon:
             report = poll_all(writer, sources)
+            report["vault_snapshot"] = capture_vault_snapshot(
+                vault_cfg, datetime.now(timezone.utc)
+            )
             report["discovery"] = discovery
             report["ok"] = not report["summary"]["errors"]
             print(json.dumps(report, indent=indent, default=str))
@@ -216,6 +261,9 @@ def main(argv: list[str]) -> int:
                 log.warning("%s file present; stopping.", KILL_FILE)
                 break
             report = poll_all(writer, sources)
+            report["vault_snapshot"] = capture_vault_snapshot(
+                vault_cfg, datetime.now(timezone.utc)
+            )
             report["discovery"] = discovery
             polls += 1
 

@@ -8,6 +8,14 @@ Data venue and execution venue are completely separate. No order ever touches th
 data layer. See `CLAUDE.md` for the operating rules — including the absolute
 `execute` boundary.
 
+**Vault overlay (optional).** Approved stances and catalysts from the Second
+Brain, via `vault-post`, can narrow what the toolkit proposes: `bias` restricts
+the side, `risk` scales the position target, and a catalyst raises the required
+edge. Every dial narrows — the vault can never permit a trade the pipeline
+would otherwise refuse. `shadow` records the overlay's verdict but never
+filters on it, so calibration still measures the whole universe. Off by
+default; enable in `config.yaml` under `vault_overlay`.
+
 ## Status: build step 13 of 19 (`baseline_vol` strategy; risk layer next)
 
 - [x] 1. Scaffold, config schema, `.gitignore`, README, `CLAUDE.md`
