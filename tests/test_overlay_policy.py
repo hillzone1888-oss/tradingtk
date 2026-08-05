@@ -165,6 +165,21 @@ def test_blocking_catalyst_blocks_inside_its_window() -> None:
     assert p.blocked is True
 
 
+def test_negative_extra_margin_never_lowers_the_required_edge() -> None:
+    """A dial can only narrow. Even if a negative margin reaches build_policy
+    (vault-post's own schema now rejects it at the door, but defense in depth
+    means this module must never trust that alone), it must not widen what the
+    pipeline accepts.
+
+    ``model_copy`` bypasses validation, so this stands in for a negative value
+    that reaches this module by some path other than ``Catalyst.model_validate``.
+    """
+    cat = _catalyst("widen_edge", start_offset_h=-1, end_offset_h=1, margin=2.0)
+    cat = cat.model_copy(update={"extra_margin_pp": -5.0})
+    p = _policy(catalysts=[cat])
+    assert p.gate_limits.required_edge_pp == BASE_GATE.required_edge_pp
+
+
 # ── provenance ─────────────────────────────────────────────────────
 
 

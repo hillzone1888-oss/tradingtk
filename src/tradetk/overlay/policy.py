@@ -108,7 +108,7 @@ def build_policy(
             blocked = True
             reasons.append(f"{cat.id}: {cat.event} — entries blocked in window")
         else:
-            extra = Decimal(str(cat.extra_margin_pp or 0))
+            extra = max(Decimal(0), Decimal(str(cat.extra_margin_pp or 0)))
             gate = replace_margin(gate, gate.margin_pp + extra)
             reasons.append(
                 f"{cat.id}: {cat.event} — +{extra}pp edge required in window"
