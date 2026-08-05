@@ -68,3 +68,11 @@ paths:
   proposals_dir: proposals
   state_db: state/toolkit.sqlite
   cache_dir: data/cache
+
+vault_overlay:
+  # Researched stances and catalysts from the Second Brain, via vault-post.
+  # Off by default. When on, approved mail can only make the system MORE
+  # selective: it restricts the side, shrinks the position, or demands more
+  # edge. It can never permit a trade the pipeline would otherwise refuse.
+  enabled: false
+  config_path: "../vault-post/config/config.yaml"

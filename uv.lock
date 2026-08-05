@@ -1008,6 +1008,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "rich" },
     { name = "truststore" },
+    { name = "vaultpost" },
     { name = "websockets" },
 ]
 
@@ -1030,6 +1031,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=13.7" },
     { name = "truststore", specifier = ">=0.9" },
+    { name = "vaultpost", editable = "../vault-post" },
     { name = "websockets", specifier = ">=12" },
 ]
 
@@ -1077,6 +1079,24 @@ sdist = { url = "https://files.pythonhosted.org/packages/92/ff/5a28bdfd8c3ebec42
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e5/6d/b53b99a9f2766d095985947a5782f1702cabb129a34f7a802d7197af832f/tzdata-2026.3-py2.py3-none-any.whl", hash = "sha256:dc096730c87af6cab1b171c9d532be840741ff5d459015e7f6947bd7d7e54931", size = 348168, upload-time = "2026-07-10T08:50:36.46Z" },
 ]
+
+[[package]]
+name = "vaultpost"
+version = "0.1.0"
+source = { editable = "../vault-post" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.6" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "websockets"

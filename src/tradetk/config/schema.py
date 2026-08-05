@@ -137,6 +137,17 @@ class RecorderConfig(_Strict):
     tape_dir: str = "data/tape"
 
 
+class VaultOverlayConfig(_Strict):
+    """Researched views from the Second Brain, via vault-post.
+
+    Off by default: the pipeline is complete without it, and the overlay only
+    ever narrows what the pipeline would otherwise do.
+    """
+
+    enabled: bool = False
+    config_path: str = "../vault-post/config/config.yaml"
+
+
 class StrategyConfig(_Strict):
     name: str = Field(min_length=1)
     realized_vol_lookback_days: PositiveInt = 30
@@ -166,6 +177,7 @@ class Config(_Strict):
     strategy: StrategyConfig
     recorder: RecorderConfig = RecorderConfig()
     paths: PathsConfig = PathsConfig()
+    vault_overlay: VaultOverlayConfig = VaultOverlayConfig()
 
     @model_validator(mode="after")
     def _live_gate(self) -> "Config":
