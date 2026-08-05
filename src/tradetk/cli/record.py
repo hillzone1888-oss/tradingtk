@@ -57,7 +57,9 @@ def _vault_overlay_cfg(path: str) -> Any:
 
         return load_config(path).vault_overlay
     except Exception as exc:  # noqa: BLE001 - config trouble must not stop the tape
-        log.info("vault_overlay config unavailable (%s); overlay off", exc)
+        # Loud on purpose: a torn config silently disabling an intended overlay
+        # is exactly the case the operator must not miss.
+        log.warning("vault_overlay config unavailable (%s); overlay off", exc)
         return VaultOverlayConfig()
 
 

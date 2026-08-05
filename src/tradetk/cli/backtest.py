@@ -184,9 +184,9 @@ def main(argv: list[str]) -> int:
 
         vault_cfg = load_config(args.config).vault_overlay
     except Exception as exc:  # noqa: BLE001 - a broken config must not stop a backtest
-        logging.getLogger("tradetk.cli.backtest").info(
-            "vault_overlay config unavailable (%s); overlay off", exc
-        )
+        # Loud on purpose: if the overlay was meant to be on, a broken config
+        # silently trading unmodified is the failure the operator must see.
+        log.warning("vault_overlay config unavailable (%s); overlay off", exc)
         vault_cfg = VaultOverlayConfig()
 
     overlay = load_overlay(
