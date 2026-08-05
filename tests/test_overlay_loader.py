@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from tradetk.config.schema import VaultOverlayConfig
-from tradetk.overlay.loader import load_overlay
+from tradetk.overlay.loader import _index_mail, load_overlay
 from tradetk.translation.edge import GateLimits
 from tradetk.translation.sizing import SizingLimits
 
@@ -50,3 +50,74 @@ def test_missing_config_is_reported_loudly() -> None:
     assert overlay.ok is False
     assert overlay.error
     assert overlay.as_dict()["ok"] is False
+
+
+# ── _index_mail: dedup tie-break and catalyst fan-out ──────────────
+
+
+class _FakeStance:
+    """A stand-in for vaultpost.ApprovedStance: only .underlying and
+    .stance.created are read by _index_mail."""
+
+    def __init__(self, underlying: str, created: datetime, id_: str) -> None:
+        self.underlying = underlying
+        self.stance = type("S", (), {"created": created, "id": id_})()
+
+
+class _FakeCatalyst:
+    """A stand-in for vaultpost.Catalyst: only .underlyings and .id are
+    read by _index_mail."""
+
+    def __init__(self, underlyings: list[str], id_: str) -> None:
+        self.underlyings = underlyings
+        self.id = id_
+
+
+def test_index_mail_dedup_keeps_the_most_recently_created_stance() -> None:
+    older = _FakeStance("BTC", datetime(2026, 8, 1, tzinfo=timezone.utc), "stance-old")
+    newer = _FakeStance("BTC", datetime(2026, 8, 4, tzinfo=timezone.utc), "stance-new")
+    by_underlying, _ = _index_mail([older, newer], [])
+    assert by_underlying["BTC"] is newer
+
+    # Order of arrival must not matter — only .stance.created decides.
+    by_underlying_reversed, _ = _index_mail([newer, older], [])
+    assert by_underlying_reversed["BTC"] is newer
+
+
+def test_index_mail_dedup_is_per_underlying() -> None:
+    btc = _FakeStance("BTC", datetime(2026, 8, 1, tzinfo=timezone.utc), "stance-btc")
+    eth = _FakeStance("ETH", datetime(2026, 8, 1, tzinfo=timezone.utc), "stance-eth")
+    by_underlying, _ = _index_mail([btc, eth], [])
+    assert by_underlying == {"BTC": btc, "ETH": eth}
+
+
+def test_index_mail_dedup_tie_break_on_equal_timestamps_keeps_first_seen() -> None:
+    """Pinned so the tie-break behavior cannot silently change: with a strict
+    '>' comparison, an exactly-equal .stance.created does not displace the
+    incumbent, so the first one encountered in iteration order wins."""
+    same_time = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    first = _FakeStance("BTC", same_time, "stance-first")
+    second = _FakeStance("BTC", same_time, "stance-second")
+    by_underlying, _ = _index_mail([first, second], [])
+    assert by_underlying["BTC"] is first
+
+
+def test_index_mail_catalyst_indexed_under_every_listed_underlying() -> None:
+    cat = _FakeCatalyst(["BTC", "ETH"], "cat-fomc")
+    _, cat_map = _index_mail([], [cat])
+    assert cat_map == {"BTC": [cat], "ETH": [cat]}
+
+
+def test_index_mail_multiple_catalysts_accumulate_per_underlying() -> None:
+    cat_a = _FakeCatalyst(["BTC"], "cat-a")
+    cat_b = _FakeCatalyst(["BTC"], "cat-b")
+    _, cat_map = _index_mail([], [cat_a, cat_b])
+    assert cat_map["BTC"] == [cat_a, cat_b]
+
+
+def test_index_mail_uppercases_underlying_keys() -> None:
+    stance = _FakeStance("btc", datetime(2026, 8, 1, tzinfo=timezone.utc), "stance-lower")
+    cat = _FakeCatalyst(["eth"], "cat-lower")
+    by_underlying, cat_map = _index_mail([stance], [cat])
+    assert "BTC" in by_underlying
+    assert "ETH" in cat_map
