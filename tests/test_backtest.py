@@ -26,6 +26,7 @@ from tradetk.backtest.settlement import (
     settle_claim,
 )
 from tradetk.costs.fees import KalshiFeeModel
+from tradetk.risk import RiskLimits
 from tradetk.signals.base import Candle
 from tradetk.strategy import BaselineVolStrategy
 from tradetk.translation.claims import UnderlyingRegistry
@@ -103,6 +104,9 @@ def engine(**overrides) -> BacktestEngine:
         sizing_limits=SizingLimits(
             position_target=D("2.00"), per_position_ceiling=D("3.00"),
             total_capital=D("20.00"), max_book_participation_pct=D("10"),
+        ),
+        risk_limits=RiskLimits(
+            max_positions=6, max_slots_per_underlying=2, total_capital=D("20.00"),
         ),
     )
     kwargs.update(overrides)
@@ -281,7 +285,9 @@ def test_slot_limit_is_enforced() -> None:
         ]
         for i in range(20)
     }
-    result = engine(max_positions=2, max_slots_per_underlying=2).run(
+    result = engine(risk_limits=RiskLimits(
+        max_positions=2, max_slots_per_underlying=2, total_capital=D("20.00"),
+    )).run(
         replay(observations, metadata)
     )
     for point in result.equity_curve:
@@ -342,3 +348,24 @@ def test_calibration_buckets_group_by_predicted_probability() -> None:
     assert buckets[0].n == 2
     assert buckets[0].observed_frequency == 0.5
     assert buckets[1].observed_frequency == 1.0
+
+
+def test_book_level_skip_reasons_keep_their_names() -> None:
+    """The extraction into risk/ must not rename the reasons downstream reports
+    read. With one slot, a filled book records the refusals as `no_free_slot`."""
+    observations = [
+        BookObservation(f"KXBTCD-T{100000 + i}", T0 + dt.timedelta(minutes=i), book())
+        for i in range(20)
+    ]
+    metadata = {
+        f"KXBTCD-T{100000 + i}": [
+            (T0, market(ticker=f"KXBTCD-T{100000 + i}", strike=str(100000 + i)))
+        ]
+        for i in range(20)
+    }
+    result = engine(
+        risk_limits=RiskLimits(
+            max_positions=1, max_slots_per_underlying=1, total_capital=D("20.00"),
+        )
+    ).run(replay(observations, metadata))
+    assert result.skipped.get("no_free_slot", 0) >= 1

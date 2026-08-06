@@ -33,6 +33,7 @@ from tradetk.backtest.settlement import CandleSettlement
 from tradetk.costs.fees import FeeRounding, KalshiFeeModel
 from tradetk.report.console import render_backtest
 from tradetk.report.html import write_backtest_report
+from tradetk.risk import RiskLimits
 from tradetk.signals.hyperliquid import HyperliquidProvider
 from tradetk.strategy import available_strategies, get_strategy
 from tradetk.translation.claims import UnderlyingRegistry
@@ -174,6 +175,11 @@ def main(argv: list[str]) -> int:
         max_hours_to_resolution=Decimal(str(args.max_hours)),
         reject_deep_tail=not args.allow_deep_tail,
     )
+    risk = RiskLimits(
+        max_positions=args.max_positions,
+        max_slots_per_underlying=args.max_per_underlying,
+        total_capital=Decimal(args.total_capital),
+    )
 
     from tradetk.config.schema import VaultOverlayConfig
     from tradetk.overlay.loader import load_overlay
@@ -206,8 +212,7 @@ def main(argv: list[str]) -> int:
         fee_model=KalshiFeeModel(rounding=FeeRounding(args.rounding)),
         gate_limits=gate,
         sizing_limits=sizing,
-        max_positions=args.max_positions,
-        max_slots_per_underlying=args.max_per_underlying,
+        risk_limits=risk,
         vol_lookback_days=args.vol_lookback_days,
         overlay=overlay,
     )

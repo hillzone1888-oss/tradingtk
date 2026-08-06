@@ -52,6 +52,7 @@ from tradetk.backtest.settlement import (
     summarise_settlements,
 )
 from tradetk.costs.fees import KalshiFeeModel
+from tradetk.risk import OpenRisk, RiskLimits, RiskState, screen_cost, screen_new_entry
 from tradetk.strategy.base import BaseStrategy, StrategyContext
 from tradetk.translation.claims import Claim, UnderlyingRegistry
 from tradetk.translation.edge import (
@@ -330,8 +331,7 @@ class BacktestEngine:
         fee_model: KalshiFeeModel,
         gate_limits: GateLimits,
         sizing_limits: SizingLimits,
-        max_positions: int = 6,
-        max_slots_per_underlying: int = 2,
+        risk_limits: RiskLimits,
         vol_lookback_days: int = 30,
         recorded_results: RecordedStatusSettlement | None = None,
         overlay: Any | None = None,
@@ -343,8 +343,7 @@ class BacktestEngine:
         self.fee_model = fee_model
         self.gate_limits = gate_limits
         self.sizing_limits = sizing_limits
-        self.max_positions = max_positions
-        self.max_slots_per_underlying = max_slots_per_underlying
+        self.risk_limits = risk_limits
         self.vol_lookback_days = vol_lookback_days
         self.recorded_results = recorded_results
         self.overlay = overlay
@@ -422,7 +421,7 @@ class BacktestEngine:
 
         realized = Decimal(0)
         capital_in_use = Decimal(0)
-        total_capital = self.sizing_limits.total_capital
+        total_capital = self.risk_limits.total_capital
 
         def settle_due(now: datetime) -> None:
             """Close every position whose claim has resolved by `now`.
@@ -522,15 +521,16 @@ class BacktestEngine:
                 continue
 
             # Portfolio limits, checked before sizing so a full book does not
-            # burn work — and so the reason is recorded distinctly.
-            if len(open_positions) >= self.max_positions:
-                self._skipped["no_free_slot"] += 1
-                continue
-            same_underlying = sum(
-                1 for p in open_positions.values() if p.claim.underlying == claim.underlying
-            )
-            if same_underlying >= self.max_slots_per_underlying:
-                self._skipped["underlying_concentration_limit"] += 1
+            # burn work — and so the reason is recorded distinctly. The book is
+            # projected to its risk-relevant fields and judged by the shared
+            # gate, so the backtest and the live executor decide identically.
+            risk_state = RiskState(open=tuple(
+                OpenRisk(t, p.claim.underlying, p.cost)
+                for t, p in open_positions.items()
+            ))
+            entry = screen_new_entry(claim.underlying, risk_state, self.risk_limits)
+            if not entry.admitted:
+                self._skipped[entry.reason] += 1
                 continue
 
             assessment, binding_cap = self._best_assessment(
@@ -540,8 +540,9 @@ class BacktestEngine:
                 continue
 
             cost = assessment.capital_at_risk
-            if capital_in_use + cost > total_capital:
-                self._skipped["insufficient_capital"] += 1
+            afford = screen_cost(cost, risk_state, self.risk_limits)
+            if not afford.admitted:
+                self._skipped[afford.reason] += 1
                 continue
 
             open_positions[ticker] = _OpenPosition(
@@ -605,8 +606,8 @@ class BacktestEngine:
                     "fixed_contracts": self.sizing_limits.fixed_contracts,
                 },
                 "portfolio": {
-                    "max_positions": self.max_positions,
-                    "max_slots_per_underlying": self.max_slots_per_underlying,
+                    "max_positions": self.risk_limits.max_positions,
+                    "max_slots_per_underlying": self.risk_limits.max_slots_per_underlying,
                 },
                 "vol_lookback_days": self.vol_lookback_days,
                 "settlement_source": self.settlement_source.name,
