@@ -16,7 +16,7 @@ would otherwise refuse. `shadow` records the overlay's verdict but never
 filters on it, so calibration still measures the whole universe. Off by
 default; enable in `config.yaml` under `vault_overlay`.
 
-## Status: build step 13 of 19 (`baseline_vol` strategy; risk layer next)
+## Status: build step 16 of 19 (propose command + execution boundary next)
 
 - [x] 1. Scaffold, config schema, `.gitignore`, README, `CLAUDE.md`
 - [x] 2. `DataProvider` protocol + `HyperliquidProvider` + cache + tests
@@ -97,8 +97,8 @@ default; enable in `config.yaml` under `vault_overlay`.
       days), and the only live route was a paid third-party feed that was
       dropped along with the provider that offered it. `baseline_vol` is the
       only strategy.
-- [ ] 14. Risk module
-- [ ] 15. Paper executor
+- [x] 14. Risk module
+- [x] 15. Paper executor
 - [ ] 16. `propose` command + `CLAUDE.md` execute boundary
 - [ ] 17. `execute` command (demo only, interactive-only)
 - [ ] 18. `PolymarketUsVenue` (sandbox first)

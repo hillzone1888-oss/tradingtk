@@ -57,6 +57,20 @@ it is still evidence.
 Writes are idempotent, so if you are unsure whether a step already ran, running
 it again cannot inflate the sample.
 
+**Step 3.5 — advance the paper book.** Only if step 2 recorded books
+successfully (a paper poll on a stale or absent tape would fill against fiction).
+
+```
+uv run --system-certs python -m tradetk.cli.paper --pretty
+```
+
+Read the JSON summary. Notify if `halted` is non-null (a circuit-breaker
+tripped — say which) or if `fills` is non-empty (a paper trade opened — list
+ticker/side/contracts/cost). `settled` and `pending_settlement` are for the
+digest, not a live ping. `errors` being non-empty is a notify. The ledger at
+`data/paper/ledger.jsonl` is committed with everything else in step 5 — the book
+does not survive the run otherwise.
+
 **Step 4 — update memory.** Edit `memory/STATE.md` in place:
 - refresh the "Evidence on hand" section with the observation and independent
   contract counts from the shadow output,

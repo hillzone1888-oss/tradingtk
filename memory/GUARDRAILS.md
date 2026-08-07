@@ -14,7 +14,7 @@ run does not know about it.
 **No routine ever places an order.** Not in demo, not "just to test", not
 because the edge looks obvious and the market is about to move.
 
-- `shadow`, `calibrate`, `backtest`, `scan`, `inspect`, `record` — always safe.
+- `shadow`, `calibrate`, `backtest`, `scan`, `inspect`, `record`, `paper` — always safe.
 - `propose` (once step 16 exists) — always safe. It writes a file.
 - `execute` — **never**. A human runs it, interactively, having read the
   proposal.

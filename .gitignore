@@ -22,6 +22,12 @@ data/*
 # ephemeral cloud environments — uncommitted, it would not survive the run that
 # created it. Small: one partition per day of scored forecasts.
 !data/shadow/
+# The paper book IS committed. It is the accumulated paper trades, recorded in
+# an event-sourced ledger and produced by runs in ephemeral cloud environments —
+# uncommitted, it would not survive the run that created it. Small: one JSONL file
+# per run that advances the book.
+!data/paper/
+!data/paper/**
 
 # ─── Python ────────────────────────────────────────────────────────
 __pycache__/
