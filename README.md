@@ -16,7 +16,7 @@ would otherwise refuse. `shadow` records the overlay's verdict but never
 filters on it, so calibration still measures the whole universe. Off by
 default; enable in `config.yaml` under `vault_overlay`.
 
-## Status: build step 16 of 19 (propose command + execution boundary next)
+## Status: build step 17 of 19 (`execute` command + execution boundary next)
 
 - [x] 1. Scaffold, config schema, `.gitignore`, README, `CLAUDE.md`
 - [x] 2. `DataProvider` protocol + `HyperliquidProvider` + cache + tests
@@ -99,7 +99,13 @@ default; enable in `config.yaml` under `vault_overlay`.
       only strategy.
 - [x] 14. Risk module
 - [x] 15. Paper executor
-- [ ] 16. `propose` command + `CLAUDE.md` execute boundary
+- [x] 16. `propose` command — the read-only half of the execution boundary.
+      Scans live markets, projects the live ledger read-only, runs every
+      candidate through the same overlay-aware `assess_candidate` loop the
+      backtest and paper executor use, ranks passing candidates by net edge,
+      and admits greedily against the rolling risk state. One proposal file
+      per admitted trade — never appends to the live ledger; only `execute`
+      may do that. A halted poll writes zero files.
 - [ ] 17. `execute` command (demo only, interactive-only)
 - [ ] 18. `PolymarketUsVenue` (sandbox first)
 - [ ] 19. Production flags
