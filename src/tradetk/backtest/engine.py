@@ -54,14 +54,10 @@ from tradetk.backtest.settlement import (
 from tradetk.costs.fees import KalshiFeeModel
 from tradetk.risk import OpenRisk, RiskLimits, RiskState, screen_cost, screen_new_entry
 from tradetk.strategy.base import BaseStrategy, StrategyContext
+from tradetk.translation.assessment import assess_candidate
 from tradetk.translation.claims import Claim, UnderlyingRegistry
-from tradetk.translation.edge import (
-    EdgeAssessment,
-    GateLimits,
-    assess_side,
-    side_depth,
-)
-from tradetk.translation.sizing import SizingLimits, plan_size
+from tradetk.translation.edge import EdgeAssessment, GateLimits
+from tradetk.translation.sizing import SizingLimits
 from tradetk.venues.base import BinaryBook, Side
 
 log = logging.getLogger("tradetk.backtest.engine")
@@ -356,59 +352,21 @@ class BacktestEngine:
         self, claim: Claim, opinion_estimate, book: BinaryBook, when: datetime,
         capital_in_use: Decimal,
     ) -> tuple[EdgeAssessment | None, str]:
-        """Size and assess each side; return the better passing one.
+        """Size and assess each side via the shared loop; fold its skip reasons.
 
-        Sizing has to happen per side because the two sides trade at different
-        prices, and the contract count depends on the price. So each side is
-        sized against its own book, then gated at that size — never sized at one
-        price and gated at another.
-
-        When a vault overlay is present, its verdict is resolved once for this
-        claim and then *narrows* the loop: a blocked underlying assesses no
-        side, a bias forbids the side that contradicts it, risk shrinks the
-        sizing target, and a catalyst raises the gate. With no overlay every
-        value below is exactly the global limit, so the behaviour is unchanged.
+        The loop itself lives in ``translation/assessment.py`` (shared with
+        paper and propose); this wrapper only supplies the engine's limits and
+        folds the returned skip reasons into ``self._skipped``, which keeps the
+        counters byte-for-byte identical to the pre-extraction engine.
         """
-        gate_limits = self.gate_limits
-        sizing_limits = self.sizing_limits
-        allowed: tuple[Side, ...] | None = None
-        if self.overlay is not None:
-            policy = self.overlay.for_underlying(claim.underlying, when)
-            if policy.blocked:
-                self._skipped["overlay_blocked"] += 1
-                return None, "none"
-            gate_limits = policy.gate_limits
-            sizing_limits = policy.sizing_limits
-            allowed = policy.allowed_sides(claim)
-
-        best: EdgeAssessment | None = None
-        best_cap = "none"
-        for side in (Side.yes, Side.no):
-            if allowed is not None and side not in allowed:
-                self._skipped["overlay_side_forbidden"] += 1
-                continue
-            price = book.best_yes_ask if side is Side.yes else book.best_no_ask
-            if price is None:
-                continue
-            depth = side_depth(book, side)
-            plan = plan_size(
-                price, self.fee_model, sizing_limits,
-                book_depth=depth, capital_in_use=capital_in_use,
-            )
-            if not plan.tradeable:
-                self._skipped[f"unsizeable_{plan.binding_cap.value}"] += 1
-                continue
-            assessment = assess_side(
-                claim, opinion_estimate, book, side=side, contracts=plan.contracts,
-                fee_model=self.fee_model, limits=gate_limits, now=when,
-            )
-            if not assessment.passed:
-                for failure in assessment.failures:
-                    self._skipped[f"gate_{failure.gate.value}"] += 1
-                continue
-            if best is None or assessment.net_edge_pp > best.net_edge_pp:
-                best, best_cap = assessment, plan.binding_cap.value
-        return best, best_cap
+        outcome = assess_candidate(
+            claim, opinion_estimate, book, when, capital_in_use,
+            gate_limits=self.gate_limits, sizing_limits=self.sizing_limits,
+            fee_model=self.fee_model, overlay=self.overlay,
+        )
+        for reason in outcome.skips:
+            self._skipped[reason] += 1
+        return outcome.assessment, outcome.binding_cap
 
     # -- the replay ---------------------------------------------------
 

@@ -52,10 +52,11 @@ from tradetk.state.ledger import (
 )
 from tradetk.state.settle import settle_position
 from tradetk.strategy import StrategyContext, get_strategy
+from tradetk.translation.assessment import assess_candidate
 from tradetk.translation.claims import UnderlyingRegistry
-from tradetk.translation.edge import EdgeAssessment, GateLimits, assess_side, side_depth
-from tradetk.translation.sizing import SizingLimits, plan_size
-from tradetk.venues.base import BinaryBook, Side
+from tradetk.translation.edge import EdgeAssessment, GateLimits
+from tradetk.translation.sizing import SizingLimits
+from tradetk.venues.base import BinaryBook
 from tradetk.venues.kalshi import KalshiVenue
 
 log = logging.getLogger("tradetk.cli.paper")
@@ -65,29 +66,17 @@ def choose_side(
     claim, estimate, book: BinaryBook, when: datetime, capital_in_use: Decimal, *,
     gate_limits: GateLimits, sizing_limits: SizingLimits, fee_model: KalshiFeeModel,
 ) -> tuple[EdgeAssessment | None, str]:
-    """The overlay-off twin of ``BacktestEngine._best_assessment``.
+    """The overlay-off entry to the shared assessment loop.
 
     A cross-check test asserts this returns the same choice as the engine for the
     same inputs, so the two cannot silently disagree on a decision.
     """
-    best: EdgeAssessment | None = None
-    best_cap = "none"
-    for side in (Side.yes, Side.no):
-        price = book.best_yes_ask if side is Side.yes else book.best_no_ask
-        if price is None:
-            continue
-        depth = side_depth(book, side)
-        plan = plan_size(price, fee_model, sizing_limits,
-                         book_depth=depth, capital_in_use=capital_in_use)
-        if not plan.tradeable:
-            continue
-        assessment = assess_side(claim, estimate, book, side=side, contracts=plan.contracts,
-                                 fee_model=fee_model, limits=gate_limits, now=when)
-        if not assessment.passed:
-            continue
-        if best is None or assessment.net_edge_pp > best.net_edge_pp:
-            best, best_cap = assessment, plan.binding_cap.value
-    return best, best_cap
+    outcome = assess_candidate(
+        claim, estimate, book, when, capital_in_use,
+        gate_limits=gate_limits, sizing_limits=sizing_limits,
+        fee_model=fee_model, overlay=None,
+    )
+    return outcome.assessment, outcome.binding_cap
 
 
 def _latest_books(replay: TapeReplay) -> dict[str, BinaryBook]:
