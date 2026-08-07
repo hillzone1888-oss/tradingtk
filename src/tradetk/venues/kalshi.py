@@ -111,6 +111,7 @@ def parse_market(raw: dict[str, Any]) -> VenueMarket:
         yes_ask=_dec(raw.get("yes_ask_dollars")),
         volume=_dec(raw.get("volume_fp")),
         liquidity=_dec(raw.get("liquidity_dollars")),
+        result=(raw.get("result") or None),
     )
 
 

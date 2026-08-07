@@ -205,6 +205,7 @@ class VenueMarket(_Model):
     yes_ask: Decimal | None = None
     volume: Decimal | None = None
     liquidity: Decimal | None = None
+    result: str | None = None  # settled outcome: "yes" | "no" | None while unresolved
 
     @property
     def has_machine_readable_strike(self) -> bool:
