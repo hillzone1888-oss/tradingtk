@@ -64,5 +64,6 @@
 
 ## Toolchain notes
 - Python 3.12 via `uv` (managed). This machine has a corporate/MITM root CA:
-  uv needs `--native-tls`; runtime httpx clients must use the OS trust store
+  every uv invocation needs `--system-certs` (`--native-tls` is the deprecated
+  old name — do not use it); runtime httpx clients must use the OS trust store
   (`truststore`) or live TLS calls will fail with `UnknownIssuer`.
