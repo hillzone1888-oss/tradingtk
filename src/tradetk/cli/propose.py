@@ -107,10 +107,6 @@ def run_propose(
     for market in markets:
         try:
             claim = parse_claim(market, registry)
-        except ClaimParseError:
-            skips["no_parseable_claim"] += 1
-            continue
-        try:
             if claim.resolution_time <= now:
                 skips["already_resolved"] += 1
                 continue
@@ -137,13 +133,15 @@ def run_propose(
                 skips[reason] += 1
             if outcome.assessment is not None:
                 passing.append((claim, outcome.assessment, book))
+        except ClaimParseError:
+            skips["no_parseable_claim"] += 1
+            continue
         except Exception as exc:  # noqa: BLE001 - one bad candidate must not kill the run
             summary["errors"].append(f"evaluate {market.ticker}: {exc}")
             continue
 
     passing.sort(key=lambda entry: entry[1].net_edge_pp, reverse=True)
     risk_state = book_state.risk_state()
-    capital_in_use = book_state.capital_deployed
     for claim, assessment, book in passing:
         entry = screen_new_entry(claim.underlying, risk_state, risk_limits)
         if not entry.admitted:
@@ -153,6 +151,11 @@ def run_propose(
         if not afford.admitted:
             skips[afford.reason] += 1
             continue
+        # Deliberate second call to `for_underlying` (the first, inside
+        # `assess_candidate`, only decided the side/sizing): this one is
+        # purely to record the verdict on the proposal, and `for_underlying`
+        # is pure, so recomputing it here is cheap and never disagrees with
+        # the decision already made.
         overlay_verdict = (
             overlay.for_underlying(claim.underlying, now).as_dict()
             if overlay is not None and getattr(overlay, "ok", False)
@@ -179,7 +182,6 @@ def run_propose(
             open=risk_state.open + (OpenRisk(claim.ticker, claim.underlying,
                                              assessment.capital_at_risk),)
         )
-        capital_in_use += assessment.capital_at_risk
 
     summary["skips"] = dict(skips)
     return summary

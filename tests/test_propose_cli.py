@@ -41,7 +41,7 @@ def test_slot_cap_admits_best_edge_first(propose_env, tmp_path):
                       prefill_open=5)  # config max_positions=6
     summary = run_propose(**env, now=NOW)
     assert len(summary["proposed"]) == 1
-    assert summary["skips"].get("no_free_slot", 0) >= 1
+    assert summary["skips"].get("no_free_slot", 0) == 1
     assert summary["proposed"][0]["ticker"] == "KXBTCD-T50000"  # higher net edge
 
 
