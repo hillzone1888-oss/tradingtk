@@ -62,6 +62,18 @@ def test_money_survives_the_round_trip(tmp_path, proposal_fixture):
     assert loaded["created_at"] == "2026-08-06T21:40:55+00:00"
 
 
+def test_proposal_carries_the_estimate_with_its_inputs(proposal_fixture):
+    # Spec: the file must carry "the probability estimate with its inputs
+    # (vol, hours to resolution)" -- not just the gated decision.
+    estimate = proposal_fixture["estimate"]
+    assert isinstance(estimate["p"], str)  # money-like: Decimal serialized as str
+    assert D(estimate["p"]) >= D("0")  # a real probability, not a placeholder
+    assert isinstance(estimate["sigma_annual"], float)
+    assert isinstance(estimate["hours_to_resolution"], float)
+    assert estimate["method"]
+    assert "inputs" in estimate  # the derivation detail (years, z, etc.)
+
+
 @pytest.fixture
 def proposal_fixture():
     """Build a real proposal using builders from conftest and test_backtest."""
@@ -114,12 +126,13 @@ def proposal_fixture():
         vol_lookback_days=30,
         created_at=NOW,
         config_fingerprint=fingerprint,
+        estimate=opinion.estimate,
     )
 
     # Verify expected keys
     expected_keys = {
         "schema_version", "created_at", "strategy", "claim", "decision",
-        "book", "signals", "risk", "overlay", "config_fingerprint",
+        "estimate", "book", "signals", "risk", "overlay", "config_fingerprint",
     }
     assert set(proposal.keys()) == expected_keys
 

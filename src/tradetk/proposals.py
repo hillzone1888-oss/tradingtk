@@ -63,6 +63,7 @@ def build_proposal(
     vol_lookback_days: int,
     created_at: datetime,
     config_fingerprint: str,
+    estimate: Any,
 ) -> dict[str, Any]:
     """Assemble the full decision trace for one admitted trade."""
     return {
@@ -71,6 +72,10 @@ def build_proposal(
         "strategy": {"name": strategy_name, "vol_lookback_days": vol_lookback_days},
         "claim": claim.model_dump(mode="json"),
         "decision": assessment.as_dict(),
+        # The probability estimate that fed the decision, inputs included (vol,
+        # hours to resolution, spot, z-score) -- a proposal is reviewable only
+        # if the number behind it is reconstructable after the fact.
+        "estimate": estimate.as_dict(),
         "book": _book_view(book),
         "signals": {"candle_age_seconds": str(candle_age_seconds)},
         "risk": {

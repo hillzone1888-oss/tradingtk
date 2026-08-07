@@ -24,6 +24,7 @@ def test_clean_run_writes_one_valid_proposal(propose_env, tmp_path):
     assert doc["schema_version"] == 1
     assert doc["config_fingerprint"].startswith("sha256:")
     assert isinstance(doc["decision"]["capital_at_risk"], str)
+    assert doc["estimate"]  # the probability estimate, with its inputs (vol, hours)
 
 
 def test_halted_run_writes_nothing(propose_env, tmp_path):

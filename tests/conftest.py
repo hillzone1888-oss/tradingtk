@@ -275,7 +275,10 @@ def propose_env(tmp_path):
     `paper_env`, but handing `run_propose` `markets`/`books` directly instead
     of a tape. `two_candidates=True` adds a second ("KXETHD-T3000"/ETH, $0.45
     yes-ask) with a smaller net edge, so the best-edge-first ranking has
-    something to prove. `prefill_open=N` seeds N open fill events into the
+    something to prove — and it is listed BEFORE the BTC candidate in
+    `markets`, so input order and edge order disagree: a test asserting
+    best-edge-first only passes if the ranking sort actually runs.
+    `prefill_open=N` seeds N open fill events into the
     live ledger under N distinct tickers/underlyings (so the per-underlying
     concentration cap cannot bind before the slot cap does), exercising
     `no_free_slot` specifically when `N == max_positions - 1`. `overlay` is
@@ -298,9 +301,13 @@ def propose_env(tmp_path):
         books = {market_a.ticker: book_a}
 
         if two_candidates:
+            # Lower net edge than BTC (narrower gross edge at the same p=0.55
+            # stub estimate) AND listed first, so input order disagrees with
+            # edge order — a test that only checks the admitted ticker cannot
+            # pass by accident if `passing.sort(...)` is ever deleted.
             market_b = _propose_market("KXETHD-T3000", "KXETHD", "3000")
             book_b = _propose_book("KXETHD-T3000", ask="0.45", bid="0.43")
-            markets.append(market_b)
+            markets = [market_b, market_a]
             books[market_b.ticker] = book_b
 
         if prefill_open:

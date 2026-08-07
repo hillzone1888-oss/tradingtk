@@ -103,7 +103,7 @@ def run_propose(
         return summary
 
     # -- phase 4: evaluate every candidate, then admit best-edge-first ---
-    passing: list[tuple[Any, Any, Any]] = []  # (claim, assessment, book)
+    passing: list[tuple[Any, Any, Any, Any]] = []  # (claim, assessment, book, estimate)
     for market in markets:
         try:
             claim = parse_claim(market, registry)
@@ -132,7 +132,7 @@ def run_propose(
             for reason in outcome.skips:
                 skips[reason] += 1
             if outcome.assessment is not None:
-                passing.append((claim, outcome.assessment, book))
+                passing.append((claim, outcome.assessment, book, opinion.estimate))
         except ClaimParseError:
             skips["no_parseable_claim"] += 1
             continue
@@ -142,7 +142,13 @@ def run_propose(
 
     passing.sort(key=lambda entry: entry[1].net_edge_pp, reverse=True)
     risk_state = book_state.risk_state()
-    for claim, assessment, book in passing:
+    for claim, assessment, book, estimate in passing:
+        # Every candidate here was sized/assessed against the SAME start-of-run
+        # `book_state.capital_deployed`; a candidate admitted earlier in this
+        # loop has already consumed capital that a later candidate's sizing
+        # never saw. `screen_cost` below rejects rather than resizes on that
+        # staleness, so the failure mode is conservative: at worst we
+        # under-propose a slot, never overcommit capital.
         entry = screen_new_entry(claim.underlying, risk_state, risk_limits)
         if not entry.admitted:
             skips[entry.reason] += 1
@@ -165,7 +171,7 @@ def run_propose(
             claim=claim, assessment=assessment, book=book, book_state=book_state, halt=halt,
             overlay_verdict=overlay_verdict, candle_age_seconds=age,
             strategy_name=strategy.name, vol_lookback_days=vol_lookback_days,
-            created_at=now, config_fingerprint=fingerprint,
+            created_at=now, config_fingerprint=fingerprint, estimate=estimate,
         )
         try:
             path = write_proposal(proposals_dir, proposal, created_at=now, ticker=claim.ticker)
@@ -218,44 +224,55 @@ def main(argv: list[str]) -> int:
         KalshiVenue(environment=config.venue.environment.value) as venue,
     ):
         # -- scan: read-only market discovery, mirroring cli/record.py's
-        #    series -> tickers -> eligible_markets path. --------------------
-        series = crypto_series(venue)
-        tickers = [s["ticker"] for s in series if s.get("ticker")]
-        markets = eligible_markets(
-            venue, tickers, max_hours_to_close=float(config.horizon.max_hours_to_resolution),
-            now=now,
-        )
+        #    series -> tickers -> eligible_markets path, plus fresh candles.
+        #    A wholly unreachable venue/provider (e.g. DNS/connect failure)
+        #    raises here before any per-candidate isolation exists, so the
+        #    whole scan is one try: spec says wholesale failure must still be
+        #    a JSON summary with `errors`, not a raw traceback, exit 2. -----
+        try:
+            series = crypto_series(venue)
+            tickers = [s["ticker"] for s in series if s.get("ticker")]
+            markets = eligible_markets(
+                venue, tickers,
+                max_hours_to_close=float(config.horizon.max_hours_to_resolution), now=now,
+            )
 
-        if not series and not markets:
+            if not series and not markets:
+                print(json.dumps(
+                    {"halted": None, "proposed": [], "errors": ["no eligible markets found"]},
+                    indent=2 if args.pretty else None,
+                ), file=sys.stdout)
+                return 2
+
+            errors: list[str] = []
+            books: dict[str, Any] = {}
+            for m in markets:
+                try:
+                    books[m.ticker] = venue.orderbook(m.ticker)
+                except Exception as exc:  # noqa: BLE001 - one thin market must not stop the scan
+                    errors.append(f"orderbook {m.ticker}: {exc}")
+                    continue
+
+            # Parse errors here are informational only -- run_propose reparses
+            # every market itself and folds its own `no_parseable_claim` skip.
+            parse_errors: Counter[str] = Counter()
+            symbols: set[str] = set()
+            for m in markets:
+                try:
+                    claim = parse_claim(m, registry)
+                    symbols.add(claim.underlying)
+                except ClaimParseError as exc:
+                    parse_errors[exc.reason.value] += 1
+
+            data = load_underlying_data(
+                provider, symbols, start=now, end=now, lookback_days=args.vol_lookback_days
+            )
+        except Exception as exc:  # noqa: BLE001 - wholesale scan failure must still summarize
             print(json.dumps(
-                {"halted": None, "proposed": [], "errors": ["no eligible markets found"]},
+                {"halted": None, "proposed": [], "skips": {}, "errors": [f"scan: {exc}"]},
                 indent=2 if args.pretty else None,
             ), file=sys.stdout)
             return 2
-
-        errors: list[str] = []
-        books: dict[str, Any] = {}
-        for m in markets:
-            try:
-                books[m.ticker] = venue.orderbook(m.ticker)
-            except Exception as exc:  # noqa: BLE001 - one thin market must not stop the scan
-                errors.append(f"orderbook {m.ticker}: {exc}")
-                continue
-
-        # Parse errors here are informational only -- run_propose reparses
-        # every market itself and folds its own `no_parseable_claim` skip.
-        parse_errors: Counter[str] = Counter()
-        symbols: set[str] = set()
-        for m in markets:
-            try:
-                claim = parse_claim(m, registry)
-                symbols.add(claim.underlying)
-            except ClaimParseError as exc:
-                parse_errors[exc.reason.value] += 1
-
-        data = load_underlying_data(
-            provider, symbols, start=now, end=now, lookback_days=args.vol_lookback_days
-        )
 
         # -- overlay: loaded exactly as cli/backtest.py does. `config` is
         #    already loaded above (propose needs it for capital/risk/etc.,
