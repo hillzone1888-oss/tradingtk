@@ -88,6 +88,26 @@ def test_unparseable_number_does_not_lose_the_market() -> None:
     assert m.volume is None
 
 
+def test_parse_market_maps_settled_result() -> None:
+    m = parse_market({**RAW_MARKET, "status": "finalized", "result": "yes"})
+    assert m.result == "yes"
+
+
+def test_parse_market_result_is_none_when_open() -> None:
+    m = parse_market({**RAW_MARKET, "status": "open"})
+    assert m.result is None
+
+
+def test_parse_market_result_no_maps_through() -> None:
+    m = parse_market({**RAW_MARKET, "status": "finalized", "result": "no"})
+    assert m.result == "no"
+
+
+def test_parse_market_empty_result_coerces_to_none() -> None:
+    m = parse_market({**RAW_MARKET, "status": "finalized", "result": ""})
+    assert m.result is None
+
+
 # ── the YES/NO conversion ──────────────────────────────────────────
 
 
