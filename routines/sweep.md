@@ -104,7 +104,12 @@ Send a message **only** if one of these is true:
   which, at what edge, and state plainly that **no order was placed and none
   will be**, and that a human must run `propose`/`execute`;
 - the shadow log stopped growing (same counts as `memory/STATE.md` reported last
-  run), which usually means the tape or the universe query is broken.
+  run), which usually means the tape or the universe query is broken;
+- the paper poll halted (non-null `halted` field) — say which circuit-breaker
+  tripped;
+- the paper poll opened a fill (non-empty `fills` array) — list
+  ticker/side/contracts/cost for each;
+- the paper poll reported errors.
 
 Otherwise send nothing. The commit is the record.
 
