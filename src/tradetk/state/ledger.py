@@ -31,7 +31,7 @@ def fill_event(*, ticker: str, underlying: str, side: str, contracts: int,
         "type": "fill", "ts": _iso(ts), "ticker": ticker, "underlying": underlying,
         "side": side, "contracts": contracts, "assumed_price": str(assumed_price),
         "fee": str(fee), "cost": str(cost), "resolution_time": _iso(resolution_time),
-        "idempotency_key": f"fill:{ticker}:{_iso(ts)}",
+        "idempotency_key": f"fill:{ticker}",
     }
 
 
@@ -79,7 +79,13 @@ def append_events(path: str | Path, events: list[dict[str, Any]]) -> int:
     """Append events whose idempotency_key is not already present. Returns count written."""
     p = Path(path)
     seen = {e.get("idempotency_key") for e in read_ledger(p)}
-    fresh = [e for e in events if e.get("idempotency_key") not in seen]
+    fresh = []
+    seen_in_batch = set()
+    for e in events:
+        key = e.get("idempotency_key")
+        if key not in seen and key not in seen_in_batch:
+            fresh.append(e)
+            seen_in_batch.add(key)
     if not fresh:
         return 0
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -128,11 +134,15 @@ def project(events: list[dict[str, Any]], *, starting_capital: Decimal, today: d
     for e in events:
         etype = e["type"]
         if etype == "fill":
-            open_by_ticker[e["ticker"]] = OpenPaper(
-                ticker=e["ticker"], underlying=e["underlying"], side=e["side"],
-                contracts=int(e["contracts"]), cost=Decimal(e["cost"]),
-                resolution_time=datetime.fromisoformat(e["resolution_time"]),
-            )
+            # Only open a position once per ticker; ignore duplicate fills to never lose
+            # capital. A duplicate fill is a design-invariant violation that the stable
+            # idempotency key makes near-impossible; the fold must never overwrite.
+            if e["ticker"] not in open_by_ticker:
+                open_by_ticker[e["ticker"]] = OpenPaper(
+                    ticker=e["ticker"], underlying=e["underlying"], side=e["side"],
+                    contracts=int(e["contracts"]), cost=Decimal(e["cost"]),
+                    resolution_time=datetime.fromisoformat(e["resolution_time"]),
+                )
         elif etype == "settle":
             open_by_ticker.pop(e["ticker"], None)
             pnl = Decimal(e["realized_pnl"])

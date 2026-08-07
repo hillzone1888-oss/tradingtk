@@ -57,10 +57,12 @@ def test_realized_today_excludes_other_days():
 
 def test_drawdown_is_peak_minus_current_realized_equity():
     events = [
-        settle_event(ticker="A", result="yes", side="yes", contracts=6, proceeds=D("6"),
-                     realized_pnl=D("4.00"), resolution_time=_ts(day=5), ts=_ts(day=5)),   # equity 24, peak 24
-        settle_event(ticker="B", result="no", side="yes", contracts=7, proceeds=D("0"),
-                     realized_pnl=D("-7.00"), resolution_time=_ts(day=6), ts=_ts(day=6)),  # equity 17
+        settle_event(ticker="A", result="yes", side="yes", contracts=6,
+                     proceeds=D("6"), realized_pnl=D("4.00"), resolution_time=_ts(day=5),
+                     ts=_ts(day=5)),  # equity 24, peak 24
+        settle_event(ticker="B", result="no", side="yes", contracts=7,
+                     proceeds=D("0"), realized_pnl=D("-7.00"), resolution_time=_ts(day=6),
+                     ts=_ts(day=6)),  # equity 17
     ]
     book = project(events, starting_capital=D("20"), today=TODAY)
     assert book.drawdown == D("7.00")
@@ -91,3 +93,15 @@ def test_risk_state_projection_matches_open_book():
     rs = project(events, starting_capital=D("20"), today=TODAY).risk_state()
     assert rs.slots_used == 2 and rs.slots_for("BTC") == 2
     assert rs.capital_deployed == D("3.50")
+
+
+def test_duplicate_fill_for_same_ticker_keeps_first():
+    # Two fills for ticker "A" — fold should keep the first and never lose capital
+    events = [
+        _fill("A", "BTC", "yes", 5, "2.00", _ts(hour=10)),
+        _fill("A", "BTC", "yes", 3, "1.00", _ts(hour=11)),  # duplicate, should be ignored
+    ]
+    book = project(events, starting_capital=D("20"), today=TODAY)
+    assert len(book.open) == 1
+    assert book.open[0].cost == D("2.00")  # first fill kept
+    assert book.capital_deployed == D("2.00")  # not D("3.00")

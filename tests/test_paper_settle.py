@@ -26,5 +26,7 @@ def test_no_position_wins_when_resolved_no():
 
 
 def test_unresolved_market_is_pending():
-    assert settle_position(side="yes", contracts=5, cost=D("2"), market=_mkt(status="open", result=None)) is None
-    assert settle_position(side="yes", contracts=5, cost=D("2"), market=_mkt(status="finalized", result="")) is None
+    mkt_open = _mkt(status="open", result=None)
+    assert settle_position(side="yes", contracts=5, cost=D("2"), market=mkt_open) is None
+    mkt_empty = _mkt(status="finalized", result="")
+    assert settle_position(side="yes", contracts=5, cost=D("2"), market=mkt_empty) is None
