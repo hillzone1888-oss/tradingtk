@@ -5,6 +5,7 @@ the gate only decides. See docs/superpowers/specs/2026-08-05-risk-module-design.
 """
 
 from tradetk.risk.gate import RiskDecision, screen_cost, screen_new_entry
+from tradetk.risk.halts import BookHealth, HaltLimits, screen_halts
 from tradetk.risk.limits import RiskLimits
 from tradetk.risk.state import OpenRisk, RiskState
 
@@ -15,4 +16,7 @@ __all__ = [
     "RiskDecision",
     "screen_new_entry",
     "screen_cost",
+    "HaltLimits",
+    "BookHealth",
+    "screen_halts",
 ]
