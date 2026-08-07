@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+
 import pytest
 
 L2BOOK_BTC = {
@@ -48,3 +51,150 @@ def hl_payloads() -> dict:
         "fundingHistory": FUNDING_HISTORY_BTC,
         "metaAndAssetCtxs": META_AND_CTXS,
     }
+
+
+# ── paper executor (step 15, task 4) fixtures ──────────────────────────
+
+D = Decimal
+_PAPER_NOW = datetime(2026, 8, 6, 12, tzinfo=timezone.utc)
+
+_PAPER_RULES = (
+    "If the simple average of the sixty seconds of CF Benchmarks' Bitcoin "
+    "Real-Time Index (BRTI) before 2 PM EDT is above 100000 at 2 PM EDT, then "
+    "the market resolves to Yes."
+)
+
+
+class _FakeVenue:
+    """Read-only: only .market(ticker) is used, for settlement."""
+
+    def __init__(self, results):  # results: {ticker: (status, result)}
+        self._results = results
+
+    def market(self, ticker):
+        from tradetk.venues.base import VenueMarket
+
+        status, result = self._results.get(ticker, ("open", None))
+        return VenueMarket(ticker=ticker, title="x", status=status, result=result)
+
+
+def _paper_market_a():
+    from tradetk.venues.base import VenueMarket
+
+    return VenueMarket(
+        ticker="A", series_ticker="KXBTCD", event_ticker="KXBTCD-EVT",
+        title="Bitcoin price", status="open",
+        close_time=_PAPER_NOW + timedelta(days=1),
+        strike_type="greater", floor_strike=D("50000"), rules_primary=_PAPER_RULES,
+    )
+
+
+def _paper_book_a():
+    from tradetk.venues.base import BinaryBook, BookLevel
+
+    return BinaryBook(
+        ticker="A", retrieved_at=_PAPER_NOW,
+        yes_bids=[BookLevel(price=D("0.38"), size=D("5000"))],
+        yes_asks=[BookLevel(price=D("0.40"), size=D("5000"))],
+    )
+
+
+class _FixedStrategy:
+    """A strategy stub whose estimate never abstains — the gate stack is what
+    `paper_env` exercises, not the vol model."""
+
+    name = "fixed_stub"
+
+    def estimate(self, claim, context):
+        from tradetk.strategy.base import StrategyOpinion
+        from tradetk.translation.probability import ProbabilityEstimate
+
+        est = ProbabilityEstimate(
+            ticker=claim.ticker, underlying=claim.underlying, p=D("0.55"),
+            method="test_stub", computed_at=context.now, spot=50000.0,
+            sigma_annual=0.5, hours_to_resolution=claim.hours_to_resolution(context.now),
+            z_score=0.5,
+        )
+        return StrategyOpinion(strategy=self.name, ticker=claim.ticker, estimate=est)
+
+
+class _FixedData:
+    """Stands in for `MarketDataSet`: the stub strategy never inspects the
+    snapshot, so any non-None value satisfies `run_paper_poll`'s guard."""
+
+    def snapshot_at(self, underlying, when, *, lookback_days=30):
+        return object()
+
+
+@pytest.fixture
+def paper_env(monkeypatch):
+    """Return a callable producing kwargs for run_paper_poll, with sane fakes.
+
+    Builds a real `TapeReplay` in memory (one candidate, "A"/BTC, clearing
+    every gate at `_PAPER_NOW` with a $0.40 yes-ask book 5000 deep, resolving 1
+    day out) and monkeypatches `TapeReplay.from_tape` to return it regardless
+    of `tape_dir`, so no tape file ever touches disk. `data_age_seconds`
+    controls the staleness input directly; `prefill_ticker`/`prefill_result`
+    seed an open position via a fill event so settlement has something to
+    close.
+    """
+    from tradetk.backtest.replay import BookObservation, TapeReplay
+    from tradetk.config.loader import load_config
+    from tradetk.state.ledger import append_events, fill_event
+    from tradetk.translation.claims import UnderlyingRegistry
+
+    registry = UnderlyingRegistry({"KXBTCD": "BTC"})
+    config = load_config("config/config.example.yaml")
+
+    def _make(*, ledger_path, data_age_seconds=D("0"), prefill_ticker=None, prefill_result=None):
+        replay = TapeReplay(
+            observations=[BookObservation("A", _PAPER_NOW, _paper_book_a())],
+            metadata={"A": [(_PAPER_NOW, _paper_market_a())]},
+        )
+        monkeypatch.setattr(TapeReplay, "from_tape", classmethod(lambda cls, tape_dir: replay))
+
+        venue_results = {}
+        if prefill_ticker:
+            prefill = fill_event(
+                ticker=prefill_ticker, underlying="BTC", side="yes", contracts=5,
+                assumed_price=D("0.40"), fee=D("0.10"), cost=D("2.10"),
+                resolution_time=_PAPER_NOW + timedelta(days=1),
+                ts=_PAPER_NOW - timedelta(hours=1),
+            )
+            append_events(ledger_path, [prefill])
+            venue_results[prefill_ticker] = ("finalized", prefill_result)
+
+        return {
+            "tape_dir": "unused",
+            "registry": registry,
+            "config": config,
+            "ledger_path": ledger_path,
+            "venue": _FakeVenue(venue_results),
+            "strategy": _FixedStrategy(),
+            "data": _FixedData(),
+            "data_age_seconds": data_age_seconds,
+        }
+
+    return _make
+
+
+@pytest.fixture
+def engine_case():
+    """One claim/estimate/book that trades, plus a `BacktestEngine` (overlay
+    off) built with the same limits — for the choose_side <-> engine
+    cross-check (invariant #3). Reuses the builders already in test_backtest.py
+    so the two code paths are compared on identical fixtures."""
+    from test_backtest import REGISTRY, T0, book, engine, market
+
+    from tradetk.strategy.base import StrategyContext
+    from tradetk.translation.claims import parse_claim
+
+    eng = engine()
+    claim = parse_claim(market(), REGISTRY)
+    b = book()
+    snapshot = eng.data.snapshot_at(claim.underlying, T0, lookback_days=eng.vol_lookback_days)
+    opinion = eng.strategy.estimate(claim, StrategyContext(now=T0, snapshot=snapshot, book=b))
+    assert not opinion.abstained
+    cap = D("0")
+    return (claim, opinion.estimate, b, T0, cap, eng.gate_limits, eng.sizing_limits,
+            eng.fee_model, eng)
