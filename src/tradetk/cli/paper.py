@@ -205,57 +205,63 @@ def run_paper_poll(
     for ticker, live_book in _latest_books(replay).items():
         if ticker in open_tickers:
             continue
-        claim = replay.claim_as_of(ticker, now, registry)
-        if claim is None:
-            continue
-        snapshot = data.snapshot_at(claim.underlying, now, lookback_days=vol_lookback_days)
-        if snapshot is None:
-            continue
-        opinion = strategy.estimate(
-            claim, StrategyContext(now=now, snapshot=snapshot, book=live_book)
-        )
-        if opinion.abstained:
-            continue
-        if not screen_new_entry(claim.underlying, risk_state, risk_limits).admitted:
-            continue
-        assessment, _cap = choose_side(
-            claim, opinion.estimate, live_book, now, capital_in_use,
-            gate_limits=gate_limits, sizing_limits=sizing_limits, fee_model=fee_model,
-        )
-        if assessment is None:
-            continue
-        if not screen_cost(assessment.capital_at_risk, risk_state, risk_limits).admitted:
-            continue
+        try:
+            claim = replay.claim_as_of(ticker, now, registry)
+            if claim is None:
+                continue
+            if claim.resolution_time <= now:
+                continue
+            snapshot = data.snapshot_at(claim.underlying, now, lookback_days=vol_lookback_days)
+            if snapshot is None:
+                continue
+            opinion = strategy.estimate(
+                claim, StrategyContext(now=now, snapshot=snapshot, book=live_book)
+            )
+            if opinion.abstained:
+                continue
+            if not screen_new_entry(claim.underlying, risk_state, risk_limits).admitted:
+                continue
+            assessment, _cap = choose_side(
+                claim, opinion.estimate, live_book, now, capital_in_use,
+                gate_limits=gate_limits, sizing_limits=sizing_limits, fee_model=fee_model,
+            )
+            if assessment is None:
+                continue
+            if not screen_cost(assessment.capital_at_risk, risk_state, risk_limits).admitted:
+                continue
 
-        # The fill IS the walk `assess_side` already did: it gated this exact
-        # book through `execution_cost`, which walks `yes_asks`/`yes_bids`
-        # itself. Reusing that result (rather than re-walking with the raw
-        # `walk_to_buy_*` primitive) keeps the fee in the fill instead of
-        # silently dropping it, and guarantees the fill can never diverge from
-        # the numbers that were actually gated.
-        execution = assessment.execution
-        filled = int(execution.contracts_filled) if execution else 0
-        if filled <= 0:
+            # The fill IS the walk `assess_side` already did: it gated this exact
+            # book through `execution_cost`, which walks `yes_asks`/`yes_bids`
+            # itself. Reusing that result (rather than re-walking with the raw
+            # `walk_to_buy_*` primitive) keeps the fee in the fill instead of
+            # silently dropping it, and guarantees the fill can never diverge from
+            # the numbers that were actually gated.
+            execution = assessment.execution
+            filled = int(execution.contracts_filled) if execution else 0
+            if filled <= 0:
+                continue
+            cost = assessment.capital_at_risk
+            price = execution.average_price if execution else None
+            ev = fill_event(
+                ticker=ticker, underlying=claim.underlying, side=assessment.side.value,
+                contracts=filled, assumed_price=price or Decimal(0),
+                fee=execution.fee if execution else Decimal(0), cost=cost,
+                resolution_time=claim.resolution_time, ts=now,
+            )
+            fills.append(ev)
+            summary["fills"].append({
+                "ticker": ticker, "side": assessment.side.value,
+                "contracts": filled, "cost": str(cost),
+            })
+            # Let later candidates in this same poll see the newly-used slot and
+            # capital, so the loop cannot over-commit within one pass.
+            risk_state = RiskState(
+                open=risk_state.open + (OpenRisk(ticker, claim.underlying, cost),)
+            )
+            capital_in_use += cost
+        except Exception as exc:  # noqa: BLE001 - one bad candidate must not kill the poll
+            summary["errors"].append(f"evaluate {ticker}: {exc}")
             continue
-        cost = assessment.capital_at_risk
-        price = execution.average_price if execution else None
-        ev = fill_event(
-            ticker=ticker, underlying=claim.underlying, side=assessment.side.value,
-            contracts=filled, assumed_price=price or Decimal(0),
-            fee=execution.fee if execution else Decimal(0), cost=cost,
-            resolution_time=claim.resolution_time, ts=now,
-        )
-        fills.append(ev)
-        summary["fills"].append({
-            "ticker": ticker, "side": assessment.side.value,
-            "contracts": filled, "cost": str(cost),
-        })
-        # Let later candidates in this same poll see the newly-used slot and
-        # capital, so the loop cannot over-commit within one pass.
-        risk_state = RiskState(
-            open=risk_state.open + (OpenRisk(ticker, claim.underlying, cost),)
-        )
-        capital_in_use += cost
 
     append_events(ledger_path, fills)
     return summary

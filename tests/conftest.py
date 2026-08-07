@@ -136,7 +136,10 @@ def paper_env(monkeypatch):
     of `tape_dir`, so no tape file ever touches disk. `data_age_seconds`
     controls the staleness input directly; `prefill_ticker`/`prefill_result`
     seed an open position via a fill event so settlement has something to
-    close.
+    close. `market_resolution_time` overrides "A"'s `close_time` (and so its
+    claim's `resolution_time`), e.g. to exercise the already-resolved skip.
+    `strategy` overrides the default `_FixedStrategy`, e.g. to raise for a
+    candidate and exercise per-candidate error isolation.
     """
     from tradetk.backtest.replay import BookObservation, TapeReplay
     from tradetk.config.loader import load_config
@@ -146,10 +149,14 @@ def paper_env(monkeypatch):
     registry = UnderlyingRegistry({"KXBTCD": "BTC"})
     config = load_config("config/config.example.yaml")
 
-    def _make(*, ledger_path, data_age_seconds=D("0"), prefill_ticker=None, prefill_result=None):
+    def _make(*, ledger_path, data_age_seconds=D("0"), prefill_ticker=None, prefill_result=None,
+              market_resolution_time=None, strategy=None):
+        market = _paper_market_a()
+        if market_resolution_time is not None:
+            market = market.model_copy(update={"close_time": market_resolution_time})
         replay = TapeReplay(
             observations=[BookObservation("A", _PAPER_NOW, _paper_book_a())],
-            metadata={"A": [(_PAPER_NOW, _paper_market_a())]},
+            metadata={"A": [(_PAPER_NOW, market)]},
         )
         monkeypatch.setattr(TapeReplay, "from_tape", classmethod(lambda cls, tape_dir: replay))
 
@@ -170,7 +177,7 @@ def paper_env(monkeypatch):
             "config": config,
             "ledger_path": ledger_path,
             "venue": _FakeVenue(venue_results),
-            "strategy": _FixedStrategy(),
+            "strategy": strategy if strategy is not None else _FixedStrategy(),
             "data": _FixedData(),
             "data_age_seconds": data_age_seconds,
         }
